@@ -1,0 +1,14 @@
+*.pyc
+.idea/
+.vscode/
+logs/
+log/
+*.log
+media/
+templates/
+static/
+static
+templates
+*.pdf
+*__pycache__/
+*.swp
