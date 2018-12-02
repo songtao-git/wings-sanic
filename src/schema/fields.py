@@ -1,75 +1,18 @@
 # -*- coding: utf-8 -*-
-
-# from __future__ import unicode_literals, absolute_import
-
-# try:
-#     import typing
-# except ImportError:
-#     pass
-import typing
-
-import copy
 import datetime
 import decimal
-import itertools
 import numbers
-import random
 import re
-import string
 import uuid
 from collections import Iterable, OrderedDict
+
+from sanic import exceptions
+
+from . import datetime_helper
 from .undefined import Undefined
 
 
-
-def fill_template(template, min_length, max_length):
-    return template % random_string(
-        get_value_in(
-            min_length,
-            max_length,
-            padding=len(template) - 2,
-            required_length=1))
-
-
-def get_range_endpoints(min_length, max_length, padding=0, required_length=0):
-    if min_length is None:
-        min_length = 0
-    if max_length is None:
-        max_length = max(min_length * 2, 16)
-
-    if padding:
-        max_length = max_length - padding
-        min_length = max(min_length - padding, 0)
-
-    if max_length < required_length:
-        raise MockCreationError(
-            'This field is too short to hold the mock data')
-
-    min_length = max(min_length, required_length)
-    if max_length < min_length:
-        raise MockCreationError('Minimum is greater than maximum')
-
-    return min_length, max_length
-
-
-def get_value_in(min_length, max_length, padding=0, required_length=0):
-    return random.randint(
-        *get_range_endpoints(min_length, max_length, padding, required_length))
-
-
-_alphanumeric = string.ascii_letters + string.digits
-
-
-def random_string(length, chars=_alphanumeric):
-    return ''.join(random.choice(chars) for _ in range(length))
-
-
-_last_position_hint = -1
-_next_position_hint = itertools.count()
-
-
 class FieldMeta(type):
-
     """
     Meta class for BaseField. Merges `MESSAGES` dict and accumulates
     validator methods.
@@ -101,7 +44,6 @@ class FieldMeta(type):
 
 
 class BaseField(metaclass=FieldMeta):
-
     """A base class for Fields in a Model. Instances of this
     class may be added to subclasses of ``Model`` to define a model schema.
 
@@ -136,16 +78,15 @@ class BaseField(metaclass=FieldMeta):
         resulting dict with instance level `messages` and assign to
         `self.messages`.
     """
-
     primitive_type = None
     native_type = None
 
     MESSAGES = {
-        'required': "This field is required.",
-        'choices': "Value must be one of {0}.",
+        'required': "{0}必填",
+        'choices': "{0}是{1}其中之一.",
     }
 
-    def __init__(self, label=None, help_text=None, required=False,
+    def __init__(self, label, help_text=None, required=False,
                  default=Undefined, choices=None, validators=None,
                  serialize_when_none=True, messages=None):
         super().__init__()
@@ -178,15 +119,6 @@ class BaseField(metaclass=FieldMeta):
     def _repr_info(self):
         return None
 
-    def __call__(self, value, context=None):
-        return self.convert(value, context)
-
-    def __deepcopy__(self, memo):
-        return copy.copy(self)
-
-    def _mock(self, context=None):
-        return None
-
     def _setup(self, field_name, owner_model):
         """Perform late-stage setup tasks that are run after the containing model
         has been created.
@@ -204,181 +136,129 @@ class BaseField(metaclass=FieldMeta):
     def pre_setattr(self, value):
         return value
 
-    def to_primitive(self, value, context=None):
+    def to_primitive(self, value):
         """Convert internal data to a value safe to serialize.
         """
         return value
 
-    def to_native(self, value, context=None):
+    def to_native(self, value):
         """
         Convert untrusted data to a richer Python construct.
         """
         return value
 
-    def validate(self, value, context=None):
+    def validate(self, value):
         """
         Validate the field and return a converted value or raise a
-        ``ValidationError`` with a list of errors raised by the validation
+        ``InvalidUsage`` with a list of errors raised by the validation
         chain. Stop the validation process from continuing through the
         validators by raising ``StopValidationError`` instead of ``ValidationError``.
 
         """
-        context = context or get_validation_context()
+        if self.is_compound:
+            self.to_native(value)
 
-        if context.convert:
-            value = self.convert(value, context)
-        elif self.is_compound:
-            self.convert(value, context)
-
-        errors = []
         for validator in self.validators:
-            try:
-                validator(value, context)
-            except ValidationError as exc:
-                errors.append(exc)
-                if isinstance(exc, StopValidationError):
-                    break
-        if errors:
-            raise ValidationError(errors)
+            validator(value)
 
         return value
 
-    def check_required(self, value, context):
+    def check_required(self, value):
         if self.required and (value is None or value is Undefined):
-            if self.name is None or context and not context.partial:
-                raise ConversionError(self.messages['required'])
+            raise exceptions.InvalidUsage(self.messages['required'].format(self.label))
 
-    def validate_choices(self, value, context):
+    def validate_choices(self, value):
         if self.choices is not None:
             if value not in self.choices:
-                raise ValidationError(self.messages['choices'].format(str(self.choices)))
-
-    def mock(self, context=None):
-        if not self.required and not random.choice([True, False]):
-            return self.default
-        if self.choices is not None:
-            return random.choice(self.choices)
-        return self._mock(context)
+                raise exceptions.InvalidUsage(self.messages['choices'].format(self.label, self.choices))
 
 
-class UUIDType(BaseType):
-
+class UUIDField(BaseField):
     """A field that stores a valid UUID value.
     """
-
     primitive_type = str
     native_type = uuid.UUID
 
     MESSAGES = {
-        'convert': _("Couldn't interpret '{0}' value as UUID."),
+        'convert': "{0}的值{1}不能转为UUID",
     }
 
-    def __init__(self, **kwargs):
-        # type: (...) -> uuid.UUID
-        super(UUIDType, self).__init__(**kwargs)
-
-    def _mock(self, context=None):
-        return uuid.uuid4()
-
-    def to_native(self, value, context=None):
+    def to_native(self, value):
         if not isinstance(value, uuid.UUID):
             try:
                 value = uuid.UUID(value)
             except (TypeError, ValueError):
-                raise ConversionError(self.messages['convert'].format(value))
+                raise exceptions.InvalidUsage(self.messages['convert'].format(self.label, value))
         return value
 
-    def to_primitive(self, value, context=None):
+    def to_primitive(self, value):
         return str(value)
 
 
-class StringType(BaseType):
-
+class StringField(BaseField):
     """A Unicode string field."""
-
     primitive_type = str
     native_type = str
-    allow_casts = (int, bytes)
 
     MESSAGES = {
-        'convert': _("Couldn't interpret '{0}' as string."),
-        'decode': _("Invalid UTF-8 data."),
-        'max_length': _("String value is too long."),
-        'min_length': _("String value is too short."),
-        'regex': _("String value did not match validation regex."),
+        'decode': "{0}的值不是utf-8编码格式",
+        'max_length': "{0}的值长度不能超过{1}",
+        'min_length': "{0}的值长度不能低于{1}",
+        'regex': "{0}的值格式有误",
     }
 
-    def __init__(self, regex=None, max_length=None, min_length=None, **kwargs):
-        # type: (...) -> typing.Text
-
+    def __init__(self, label, regex=None, max_length=None, min_length=None, **kwargs):
         self.regex = re.compile(regex) if regex else None
         self.max_length = max_length
         self.min_length = min_length
+        super().__init__(label, **kwargs)
 
-        super(StringType, self).__init__(**kwargs)
-
-    def _mock(self, context=None):
-        return random_string(get_value_in(self.min_length, self.max_length))
-
-    def to_native(self, value, context=None):
+    def to_native(self, value):
         if isinstance(value, str):
             return value
-        if isinstance(value, self.allow_casts):
-            if isinstance(value, bytes):
-                try:
-                    return str(value, 'utf-8')
-                except UnicodeError:
-                    raise ConversionError(self.messages['decode'].format(value))
-            elif isinstance(value, bool):
-                pass
-            else:
-                return str(value)
-        raise ConversionError(self.messages['convert'].format(value))
+        if isinstance(value, bytes):
+            try:
+                return str(value, 'utf-8')
+            except UnicodeError:
+                raise exceptions.InvalidUsage(self.messages['decode'].format(self.label))
+        return str(value)
 
-    def validate_length(self, value, context=None):
+    def validate_length(self, value):
         length = len(value)
         if self.max_length is not None and length > self.max_length:
-            raise ValidationError(self.messages['max_length'])
+            raise exceptions.InvalidUsage(self.messages['max_length'].format(self.label, self.max_length))
 
         if self.min_length is not None and length < self.min_length:
-            raise ValidationError(self.messages['min_length'])
+            raise exceptions.InvalidUsage(self.messages['min_length'].format(self.label, self.min_length))
 
-    def validate_regex(self, value, context=None):
+    def validate_regex(self, value):
         if self.regex is not None and self.regex.match(value) is None:
-            raise ValidationError(self.messages['regex'])
+            raise exceptions.InvalidUsage(self.messages['regex'].format(self.label))
 
 
-class NumberType(BaseType):
-
+class NumberField(BaseField):
     """A generic number field.
     Converts to and validates against `number_type` parameter.
+    :param strict: eg. `1.2` is not effective for IntField if `strict` is True; but effective if False
     """
 
     primitive_type = None
     native_type = None
     number_type = None
     MESSAGES = {
-        'number_coerce': _("Value '{0}' is not {1}."),
-        'number_min': _("{0} value should be greater than or equal to {1}."),
-        'number_max': _("{0} value should be less than or equal to {1}."),
+        'number_coerce': "{0}的值{1}不能转化成{2}",
+        'number_min': "{0}的值应大于等于{1}",
+        'number_max': "{0}的值应小于等于{1}",
     }
 
-    def __init__(self, min_value=None, max_value=None, strict=False, **kwargs):
-        # type: (...) -> typing.Union[int, float]
-
+    def __init__(self, label, min_value=None, max_value=None, strict=False, **kwargs):
         self.min_value = min_value
         self.max_value = max_value
         self.strict = strict
 
-        super(NumberType, self).__init__(**kwargs)
+        super().__init__(label, **kwargs)
 
-    def _mock(self, context=None):
-        number = random.uniform(
-            *get_range_endpoints(self.min_value, self.max_value)
-        )
-        return self.native_type(number) if self.native_type else number
-
-    def to_native(self, value, context=None):
+    def to_native(self, value):
         if isinstance(value, bool):
             value = int(value)
         if isinstance(value, self.native_type):
@@ -388,126 +268,69 @@ class NumberType(BaseType):
         except (TypeError, ValueError):
             pass
         else:
-            if self.native_type is float: # Float conversion is strict enough.
+            if self.native_type is float:  # Float conversion is strict enough.
                 return native_value
-            if not self.strict and native_value == value: # Match numeric types.
+            if not self.strict or native_value == value:
                 return native_value
-            if isinstance(value, (string_type, numbers.Integral)):
+            if isinstance(value, (str, numbers.Integral)):
                 return native_value
 
-        raise ConversionError(self.messages['number_coerce']
-                              .format(value, self.number_type.lower()))
+        raise exceptions.InvalidUsage(self.messages['number_coerce'].format(self.label, value, self.number_type))
 
-    def validate_range(self, value, context=None):
+    def validate_range(self, value):
         if self.min_value is not None and value < self.min_value:
-            raise ValidationError(self.messages['number_min']
-                                  .format(self.number_type, self.min_value))
+            raise exceptions.InvalidUsage(self.messages['number_min'].format(self.label, self.min_value))
 
         if self.max_value is not None and value > self.max_value:
-            raise ValidationError(self.messages['number_max']
-                                  .format(self.number_type, self.max_value))
+            raise exceptions.InvalidUsage(self.messages['number_max'].format(self.label, self.max_value))
 
         return value
 
 
-class IntType(NumberType):
-
+class IntField(NumberField):
     """A field that validates input as an Integer
     """
 
     primitive_type = int
     native_type = int
-    number_type = 'Int'
-
-    def __init__(self, **kwargs):
-        # type: (...) -> int
-        super(IntType, self).__init__(**kwargs)
+    number_type = '整数'
 
 
-LongType = IntType
-
-
-class FloatType(NumberType):
-
+class FloatField(NumberField):
     """A field that validates input as a Float
     """
 
     primitive_type = float
     native_type = float
-    number_type = 'Float'
-
-    def __init__(self, **kwargs):
-        # type: (...) -> float
-        super(FloatType, self).__init__(**kwargs)
+    number_type = '小数'
 
 
-class DecimalType(NumberType):
-
+class DecimalField(NumberField):
     """A fixed-point decimal number field.
     """
 
     primitive_type = str
     native_type = decimal.Decimal
-    number_type = 'Decimal'
+    number_type = '定点小数'
 
-    def to_primitive(self, value, context=None):
+    def to_primitive(self, value):
         return str(value)
 
-    def to_native(self, value, context=None):
+    def to_native(self, value):
         if isinstance(value, decimal.Decimal):
             return value
 
-        if not isinstance(value, (string_type, bool)):
-            value = str(value)
+        if not isinstance(value, (str, bool)):
+            value = value
         try:
             value = decimal.Decimal(value)
         except (TypeError, decimal.InvalidOperation):
-            raise ConversionError(self.messages['number_coerce'].format(
-                value, self.number_type.lower()))
+            raise exceptions.InvalidUsage(self.messages['number_coerce'].format(self.label, value, self.number_type))
 
         return value
 
 
-class HashType(StringType):
-
-    MESSAGES = {
-        'hash_length': _("Hash value is wrong length."),
-        'hash_hex': _("Hash value is not hexadecimal."),
-    }
-
-    def _mock(self, context=None):
-        return random_string(self.LENGTH, string.hexdigits)
-
-    def to_native(self, value, context=None):
-        value = super(HashType, self).to_native(value, context)
-
-        if len(value) != self.LENGTH:
-            raise ValidationError(self.messages['hash_length'])
-        try:
-            int(value, 16)
-        except ValueError:
-            raise ConversionError(self.messages['hash_hex'])
-        return value
-
-
-class MD5Type(HashType):
-
-    """A field that validates input as resembling an MD5 hash.
-    """
-
-    LENGTH = 32
-
-
-class SHA1Type(HashType):
-
-    """A field that validates input as resembling an SHA1 hash.
-    """
-
-    LENGTH = 40
-
-
-class BooleanType(BaseType):
-
+class BooleanField(BaseField):
     """A boolean field type. In addition to ``True`` and ``False``, coerces these
     values:
 
@@ -522,15 +345,8 @@ class BooleanType(BaseType):
     TRUE_VALUES = ('True', 'true', '1')
     FALSE_VALUES = ('False', 'false', '0')
 
-    def __init__(self, **kwargs):
-        # type: (...) -> bool
-        super(BooleanType, self).__init__(**kwargs)
-
-    def _mock(self, context=None):
-        return random.choice([True, False])
-
     def to_native(self, value, context=None):
-        if isinstance(value, string_type):
+        if isinstance(value, str):
             if value in self.TRUE_VALUES:
                 value = True
             elif value in self.FALSE_VALUES:
@@ -540,575 +356,419 @@ class BooleanType(BaseType):
             value = bool(value)
 
         if not isinstance(value, bool):
-            raise ConversionError(_("Must be either true or false."))
+            raise exceptions.InvalidUsage("{0}的值应是布尔值true或者false".format(self.label))
 
         return value
 
 
-class DateType(BaseType):
-
-    """Defaults to converting to and from ISO8601 date values.
+class DateField(BaseField):
+    """Convert to and from ISO8601 date value.
     """
 
     primitive_type = str
     native_type = datetime.date
 
-    SERIALIZED_FORMAT = '%Y-%m-%d'
     MESSAGES = {
-        'parse': _("Could not parse {0}. Should be ISO 8601 (YYYY-MM-DD)."),
-        'parse_formats': _('Could not parse {0}. Valid formats: {1}'),
+        'parse': "{0}日期格式错误,有效格式是ISO8601日期格式(YYYY-MM-DD)"
     }
 
-    def __init__(self, formats=None, **kwargs):
-        # type: (...) -> datetime.date
-
-        if formats:
-            self.formats = listify(formats)
-            self.conversion_errmsg = self.MESSAGES['parse_formats']
-        else:
-            self.formats = ['%Y-%m-%d']
-            self.conversion_errmsg = self.MESSAGES['parse']
-
-        self.serialized_format = self.SERIALIZED_FORMAT
-
-        super(DateType, self).__init__(**kwargs)
-
-    def _mock(self, context=None):
-        return datetime.date(
-            year=random.randrange(600) + 1900,
-            month=random.randrange(12) + 1,
-            day=random.randrange(28) + 1,
-        )
-
-    def to_native(self, value, context=None):
+    def to_native(self, value):
         if isinstance(value, datetime.datetime):
             return value.date()
         if isinstance(value, datetime.date):
             return value
 
-        for fmt in self.formats:
-            try:
-                return datetime.datetime.strptime(value, fmt).date()
-            except (ValueError, TypeError):
-                continue
-        else:
-            raise ConversionError(self.conversion_errmsg.format(value, ", ".join(self.formats)))
+        try:
+            return datetime_helper.parse_date(value)
+        except (ValueError, TypeError):
+            raise exceptions.InvalidUsage(self.messages['parse'].format(self.label))
 
-    def to_primitive(self, value, context=None):
-        return value.strftime(self.serialized_format)
+    def to_primitive(self, value):
+        return datetime_helper.get_date_str(value)
 
 
-class DateTimeType(BaseType):
-
-    """A field that holds a combined date and time value.
-
-    The built-in parser accepts input values conforming to the ISO 8601 format
-    ``<YYYY>-<MM>-<DD>T<hh>:<mm>[:<ss.ssssss>][<z>]``. A space may be substituted
-    for the delimiter ``T``. The time zone designator ``<z>`` may be either ``Z``
-    or ``±<hh>[:][<mm>]``.
-
-    Values are stored as standard ``datetime.datetime`` instances with the time zone
-    offset in the ``tzinfo`` component if available. Raw values that do not specify a time
-    zone will be converted to naive ``datetime`` objects unless ``tzd='utc'`` is in effect.
-
-    Unix timestamps are also valid input values and will be converted to UTC datetimes.
-
-    :param formats:
-        (Optional) A value or iterable of values suitable as ``datetime.datetime.strptime`` format
-        strings, for example ``('%Y-%m-%dT%H:%M:%S', '%Y-%m-%dT%H:%M:%S.%f')``. If the parameter is
-        present, ``strptime()`` will be used for parsing instead of the built-in parser.
-    :param serialized_format:
-        The output format suitable for Python ``strftime``. Default: ``'%Y-%m-%dT%H:%M:%S.%f%z'``
-    :param parser:
-        (Optional) An external function to use for parsing instead of the built-in parser. It should
-        return a ``datetime.datetime`` instance.
-    :param tzd:
-        Sets the time zone policy.
-        Default: ``'allow'``
-            ============== ======================================================================
-            ``'require'``  Values must specify a time zone.
-            ``'allow'``    Values both with and without a time zone designator are allowed.
-            ``'utc'``      Like ``allow``, but values with no time zone information are assumed
-                           to be in UTC.
-            ``'reject'``   Values must not specify a time zone. This also prohibits timestamps.
-            ============== ======================================================================
-    :param convert_tz:
-        Indicates whether values with a time zone designator should be automatically converted to UTC.
-        Default: ``False``
-            * ``True``:  Convert the datetime to UTC based on its time zone offset.
-            * ``False``: Don't convert. Keep the original time and offset intact.
-    :param drop_tzinfo:
-        Can be set to automatically remove the ``tzinfo`` objects. This option should generally
-        be used in conjunction with the ``convert_tz`` option unless you only care about local
-        wall clock times. Default: ``False``
-            * ``True``:  Discard the ``tzinfo`` components and make naive ``datetime`` objects instead.
-            * ``False``: Preserve the ``tzinfo`` components if present.
+class DateTimeField(BaseField):
+    """Convert to and from ISO8601 datetime value.
     """
 
     primitive_type = str
     native_type = datetime.datetime
 
-    SERIALIZED_FORMAT = '%Y-%m-%dT%H:%M:%S.%f%z'
-
     MESSAGES = {
-        'parse': _('Could not parse {0}. Should be ISO 8601 or timestamp.'),
-        'parse_formats': _('Could not parse {0}. Valid formats: {1}'),
-        'parse_external': _('Could not parse {0}.'),
-        'parse_tzd_require': _('Could not parse {0}. Time zone offset required.'),
-        'parse_tzd_reject': _('Could not parse {0}. Time zone offset not allowed.'),
-        'tzd_require': _('Could not convert {0}. Time zone required but not found.'),
-        'tzd_reject': _('Could not convert {0}. Time zone offsets not allowed.'),
-        'validate_tzd_require': _('Time zone information required but not found.'),
-        'validate_tzd_reject': _('Time zone information not allowed.'),
-        'validate_utc_none': _('Time zone must be UTC but was None.'),
-        'validate_utc_wrong': _('Time zone must be UTC.'),
+        'parse': '{0}时间格式错误,有效格式是ISO8601时间格式',
     }
 
-    REGEX = re.compile(r"""
-                (?P<year>\d{4})-(?P<month>\d\d)-(?P<day>\d\d)(?:T|\ )
-                (?P<hour>\d\d):(?P<minute>\d\d)
-                (?::(?P<second>\d\d)(?:(?:\.|,)(?P<sec_frac>\d{1,6}))?)?
-                (?:(?P<tzd_offset>(?P<tzd_sign>[+−-])(?P<tzd_hour>\d\d):?(?P<tzd_minute>\d\d)?)
-                |(?P<tzd_utc>Z))?$""", re.X)
-
-    TIMEDELTA_ZERO = datetime.timedelta(0)
-
-    class fixed_timezone(datetime.tzinfo):
-        def utcoffset(self, dt): return self.offset
-        def fromutc(self, dt): return dt + self.offset
-        def dst(self, dt): return None
-        def tzname(self, dt): return self.str
-        def __str__(self): return self.str
-        def __repr__(self, info=''): return '{0}({1})'.format(type(self).__name__, info)
-
-    class utc_timezone(fixed_timezone):
-        offset = datetime.timedelta(0)
-        name = str = 'UTC'
-
-    class offset_timezone(fixed_timezone):
-        def __init__(self, hours=0, minutes=0):
-            self.offset = datetime.timedelta(hours=hours, minutes=minutes)
-            total_seconds = self.offset.days * 86400 + self.offset.seconds
-            self.str = '{0:s}{1:02d}:{2:02d}'.format(
-                '+' if total_seconds >= 0 else '-',
-                int(abs(total_seconds) / 3600),
-                int(abs(total_seconds) % 3600 / 60))
-        def __repr__(self):
-            return DateTimeType.fixed_timezone.__repr__(self, self.str)
-
-    UTC = utc_timezone()
-    EPOCH = datetime.datetime(1970, 1, 1, tzinfo=UTC)
-
-    def __init__(self, formats=None, serialized_format=None, parser=None,
-                 tzd='allow', convert_tz=False, drop_tzinfo=False, **kwargs):
-        # type: (...) -> datetime.datetime
-
-        if tzd not in ('require', 'allow', 'utc', 'reject'):
-            raise ValueError("DateTimeType.__init__() got an invalid value for parameter 'tzd'")
-        self.formats = listify(formats)
-        self.serialized_format = serialized_format or self.SERIALIZED_FORMAT
-        self.parser = parser
-        self.tzd = tzd
-        self.convert_tz = convert_tz
-        self.drop_tzinfo = drop_tzinfo
-
-        super(DateTimeType, self).__init__(**kwargs)
-
-    def _mock(self, context=None):
-        dt = datetime.datetime(
-               year=random.randrange(600) + 1900,
-               month=random.randrange(12) + 1,
-               day=random.randrange(28) + 1,
-               hour=random.randrange(24),
-               minute=random.randrange(60),
-               second=random.randrange(60),
-               microsecond=random.randrange(1000000))
-
-        if self.tzd == 'reject' or \
-           self.drop_tzinfo or \
-           self.tzd == 'allow' and random.randrange(2):
-            return dt
-        elif self.convert_tz:
-            return dt.replace(tzinfo=self.UTC)
-        else:
-            return dt.replace(tzinfo=self.offset_timezone(hours=random.randrange(-12, 15),
-                                                          minutes=random.choice([0, 30, 45])))
-
-    def to_native(self, value, context=None):
-
+    def to_native(self, value):
         if isinstance(value, datetime.datetime):
-            if value.tzinfo is None:
-                if not self.drop_tzinfo:
-                    if self.tzd == 'require':
-                        raise ConversionError(self.messages['tzd_require'].format(value))
-                    if self.tzd == 'utc':
-                        value = value.replace(tzinfo=self.UTC)
-            else:
-                if self.tzd == 'reject':
-                    raise ConversionError(self.messages['tzd_reject'].format(value))
-                if self.convert_tz:
-                    value = value.astimezone(self.UTC)
-                if self.drop_tzinfo:
-                    value = value.replace(tzinfo=None)
-            return value
-
-        if self.formats:
-            # Delegate to datetime.datetime.strptime() using provided format strings.
-            for fmt in self.formats:
-                try:
-                    dt = datetime.datetime.strptime(value, fmt)
-                    break
-                except (ValueError, TypeError):
-                    continue
-            else:
-                raise ConversionError(self.messages['parse_formats'].format(value, ", ".join(self.formats)))
-        elif self.parser:
-            # Delegate to external parser.
-            try:
-                dt = self.parser(value)
-            except:
-                raise ConversionError(self.messages['parse_external'].format(value))
-        else:
-            # Use built-in parser.
-            try:
-                value = float(value)
-            except ValueError:
-                dt = self.from_string(value)
-            except TypeError:
-                raise ConversionError(self.messages['parse'].format(value))
-            else:
-                dt = self.from_timestamp(value)
-            if not dt:
-                raise ConversionError(self.messages['parse'].format(value))
-
-        if dt.tzinfo is None:
-            if self.tzd == 'require':
-                raise ConversionError(self.messages['parse_tzd_require'].format(value))
-            if self.tzd == 'utc' and not self.drop_tzinfo:
-                dt = dt.replace(tzinfo=self.UTC)
-        else:
-            if self.tzd == 'reject':
-                raise ConversionError(self.messages['parse_tzd_reject'].format(value))
-            if self.convert_tz:
-                dt = dt.astimezone(self.UTC)
-            if self.drop_tzinfo:
-                dt = dt.replace(tzinfo=None)
-
-        return dt
-
-    def from_string(self, value):
-        match = self.REGEX.match(value)
-        if not match:
-            return None
-        parts = dict(((k, v) for k, v in match.groupdict().items() if v is not None))
-        p = lambda name: int(parts.get(name, 0))
-        microsecond = p('sec_frac') and p('sec_frac') * 10 ** (6 - len(parts['sec_frac']))
-        if 'tzd_utc' in parts:
-            tz = self.UTC
-        elif 'tzd_offset' in parts:
-            tz_sign = 1 if parts['tzd_sign'] == '+' else -1
-            tz_offset = (p('tzd_hour') * 60 + p('tzd_minute')) * tz_sign
-            if tz_offset == 0:
-                tz = self.UTC
-            else:
-                tz = self.offset_timezone(minutes=tz_offset)
-        else:
-            tz = None
+            return datetime_helper.get_utc_time(value)
         try:
-            return datetime.datetime(p('year'), p('month'), p('day'),
-                                     p('hour'), p('minute'), p('second'),
-                                     microsecond, tz)
+            return datetime_helper.parse_datetime(value)
         except (ValueError, TypeError):
-            return None
+            raise exceptions.InvalidUsage(self.messages['parse'].format(self.label))
 
-    def from_timestamp(self, value):
-        try:
-            return datetime.datetime(1970, 1, 1, tzinfo=self.UTC) + datetime.timedelta(seconds=value)
-        except (ValueError, TypeError):
-            return None
-
-    def to_primitive(self, value, context=None):
-        if callable(self.serialized_format):
-            return self.serialized_format(value)
-        return value.strftime(self.serialized_format)
-
-    def validate_tz(self, value, context=None):
-        if value.tzinfo is None:
-            if not self.drop_tzinfo:
-                if self.tzd == 'require':
-                    raise ValidationError(self.messages['validate_tzd_require'])
-                if self.tzd == 'utc':
-                    raise ValidationError(self.messages['validate_utc_none'])
-        else:
-            if self.drop_tzinfo:
-                raise ValidationError(self.messages['validate_tzd_reject'])
-            if self.tzd == 'reject':
-                raise ValidationError(self.messages['validate_tzd_reject'])
-            if self.convert_tz \
-              and value.tzinfo.utcoffset(value) != self.TIMEDELTA_ZERO:
-                raise ValidationError(self.messages['validate_utc_wrong'])
+    def to_primitive(self, value):
+        return datetime_helper.get_time_str(value)
 
 
-class UTCDateTimeType(DateTimeType):
-
-    """A variant of ``DateTimeType`` that normalizes everything to UTC and stores values
-    as naive ``datetime`` instances. By default sets ``tzd='utc'``, ``convert_tz=True``,
-    and ``drop_tzinfo=True``. The standard export format always includes the UTC time
-    zone designator ``"Z"``.
-    """
-
-    SERIALIZED_FORMAT = '%Y-%m-%dT%H:%M:%S.%fZ'
-
-    def __init__(self, formats=None, parser=None, tzd='utc', convert_tz=True, drop_tzinfo=True, **kwargs):
-        # type: (...) -> datetime.datetime
-        super(UTCDateTimeType, self).__init__(formats=formats, parser=parser, tzd=tzd,
-                                              convert_tz=convert_tz, drop_tzinfo=drop_tzinfo, **kwargs)
-
-
-class TimestampType(DateTimeType):
-
-    """A variant of ``DateTimeType`` that exports itself as a Unix timestamp
-    instead of an ISO 8601 string. Always sets ``tzd='require'`` and
-    ``convert_tz=True``.
-    """
-
+class TimestampField(BaseField):
     primitive_type = float
-
-    def __init__(self, formats=None, parser=None, drop_tzinfo=False, **kwargs):
-        # type: (...) -> datetime.datetime
-        super(TimestampType, self).__init__(formats=formats, parser=parser, tzd='require',
-                                            convert_tz=True, drop_tzinfo=drop_tzinfo, **kwargs)
-
-    def to_primitive(self, value, context=None):
-        if value.tzinfo is None:
-            value = value.replace(tzinfo=self.UTC)
-        else:
-            value = value.astimezone(self.UTC)
-        delta = value - self.EPOCH
-        return delta.total_seconds()
-
-
-class TimedeltaType(BaseType):
-
-    """Converts Python Timedelta objects into the corresponding value in seconds.
-    """
-
-    primitive_type = float
-    native_type = datetime.timedelta
+    native_type = datetime.datetime
 
     MESSAGES = {
-        'convert': _("Couldn't interpret '{0}' value as Timedelta."),
+        'parse': '{0}时间戳有误',
     }
 
-    DAYS = 'days'
-    SECONDS = 'seconds'
-    MICROSECONDS = 'microseconds'
-    MILLISECONDS = 'milliseconds'
-    MINUTES = 'minutes'
-    HOURS = 'hours'
-    WEEKS = 'weeks'
+    def to_native(self, value):
+        if isinstance(value, datetime.datetime):
+            return datetime_helper.get_utc_time(value)
+        try:
+            t = float(value)
+            return datetime_helper.from_timestamp(t)
+        except (ValueError, TypeError):
+            raise exceptions.InvalidUsage(self.messages['parse'].format(self.label))
 
-    def __init__(self, precision='seconds', **kwargs):
-        # type: (...) -> datetime.timedelta
-        precision = precision.lower()
-        units = (self.DAYS, self.SECONDS, self.MICROSECONDS, self.MILLISECONDS,
-                 self.MINUTES, self.HOURS, self.WEEKS)
-        if precision not in units:
-            raise ValueError("TimedeltaType.__init__() got an invalid value for parameter 'precision'")
-        self.precision = precision
-        super(TimedeltaType, self).__init__(**kwargs)
+    def to_primitive(self, value):
+        return value.timestamp()
 
-    def _mock(self, context=None):
-        return datetime.timedelta(seconds=random.random() * 1000)
+
+class EmailField(StringField):
+
+    """A field that validates input as an E-Mail-Address.
+    """
+
+    MESSAGES = {
+        'email': "{0}的值{1}不是有效的邮箱",
+    }
+
+    EMAIL_REGEX = re.compile(r"""^(
+        ( ( [%(atext)s]+ (\.[%(atext)s]+)* ) | ("( [%(qtext)s\s] | \\[%(vchar)s\s] )*") )
+        @((?!-)[A-Z0-9-]{1,63}(?<!-)\.)+[A-Z]{2,63})$"""
+        % {
+            'atext': '-A-Z0-9!#$%&\'*+/=?^_`{|}~',
+            'qtext': '\x21\x23-\x5B\\\x5D-\x7E',
+            'vchar': '\x21-\x7E'
+        },
+        re.I + re.X)
+
+    def validate_email(self, value):
+        if not EmailField.EMAIL_REGEX.match(value):
+            raise exceptions.InvalidUsage(self.messages['email'].format(self.label, value))
+
+
+class PhoneField(StringField):
+
+    """A field that validates input as a phone number.
+    """
+
+    MESSAGES = {
+        'phone': "{0}的值{1}不是有效的电话号码",
+    }
+
+    PHONE_REGEX = re.compile(r"^1[3456789]\d{9}$")
+
+    def validate_phone(self, value):
+        if not PhoneField.PHONE_REGEX.match(value):
+            raise exceptions.InvalidUsage(self.messages['phone'].format(self.label, value))
+
+
+class IDField(StringField):
+    """A field that validates input as a ID number.
+    """
+
+    MESSAGES = {
+        'ID': "{0}的值{1}不是有效的身份证号码",
+    }
+
+    ID_REGEX = re.compile(r"(^\d{15}$)|(^\d{17}([0-9]|X)$)")
+
+    def validate_ID(self, value):
+        if not IDField.ID_REGEX.match(value):
+            raise exceptions.InvalidUsage(self.messages['ID'].format(self.label, value))
+
+
+class CompoundField(BaseField):
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.is_compound = True
+        try:
+            self.field.parent_field = self
+        except AttributeError:
+            pass
+
+    def _setup(self, field_name, owner_model):
+        # Recursively set up inner fields.
+        if hasattr(self, 'field'):
+            self.field._setup(None, owner_model)
+        super()._setup(field_name, owner_model)
 
     def to_native(self, value, context=None):
-        if isinstance(value, datetime.timedelta):
-            return value
-        try:
-            return datetime.timedelta(**{self.precision: float(value)})
-        except (ValueError, TypeError):
-            raise ConversionError(self.messages['convert'].format(value))
+        context = context or get_export_context(to_native_converter)
+        return to_native_converter(self, value, context)
 
     def to_primitive(self, value, context=None):
-        base_unit = datetime.timedelta(**{self.precision: 1})
-        return int(value.total_seconds() / base_unit.total_seconds())
+        context = context or get_export_context(to_primitive_converter)
+        return to_primitive_converter(self, value, context)
+
+    def _init_field(self, field, options):
+        """
+        Instantiate the inner field that represents each element within this compound type.
+        In case the inner field is itself a compound type, its inner field can be provided
+        as the ``nested_field`` keyword argument.
+        """
+        if not isinstance(field, BaseType):
+            nested_field = options.pop('nested_field', None) or options.pop('compound_field', None)
+            if nested_field:
+                field = field(field=nested_field, **options)
+            else:
+                field = field(**options)
+        return field
 
 
-class GeoPointType(BaseType):
+class ModelType(CompoundType):
+    """A field that can hold an instance of the specified model."""
 
-    """A list storing a latitude and longitude.
+    primitive_type = dict
+
+    @property
+    def native_type(self):
+        return self.model_class
+
+    @property
+    def fields(self):
+        return self.model_class.fields
+
+    @property
+    def model_class(self):
+        if self._model_class:
+            return self._model_class
+
+        model_class = import_string(self.model_name)
+        self._model_class = model_class
+        return model_class
+
+    def __init__(self,
+                 model_spec,  # type: typing.Type[T]
+                 **kwargs):
+        # type: (...) -> T
+
+        if isinstance(model_spec, ModelMeta):
+            self._model_class = model_spec
+            self.model_name = self.model_class.__name__
+        elif isinstance(model_spec, string_type):
+            self._model_class = None
+            self.model_name = model_spec
+        else:
+            raise TypeError("ModelType: Expected a model, got an argument "
+                            "of the type '{}'.".format(model_spec.__class__.__name__))
+
+        super(ModelType, self).__init__(**kwargs)
+
+    def _repr_info(self):
+        return self.model_class.__name__
+
+    def _mock(self, context=None):
+        return self.model_class.get_mock_object(context)
+
+    def _setup(self, field_name, owner_model):
+        # Resolve possible name-based model reference.
+        if not self._model_class:
+            if self.model_name == owner_model.__name__:
+                self._model_class = owner_model
+            else:
+                pass  # Intentionally left blank, it will be setup later.
+        super(ModelType, self)._setup(field_name, owner_model)
+
+    def pre_setattr(self, value):
+        if value is not None \
+          and not isinstance(value, Model):
+            if not isinstance(value, dict):
+                raise ConversionError(_('Model conversion requires a model or dict'))
+            value = self.model_class(value)
+        return value
+
+    def _convert(self, value, context):
+        field_model_class = self.model_class
+        if isinstance(value, field_model_class):
+            model_class = type(value)
+        elif isinstance(value, dict):
+            model_class = field_model_class
+        else:
+            raise ConversionError(
+                _("Input must be a mapping or '%s' instance") % field_model_class.__name__)
+        if context.convert and context.oo:
+            return model_class(value, context=context)
+        else:
+            return model_class.convert(value, context=context)
+
+    def _export(self, value, format, context):
+        if isinstance(value, Model):
+            model_class = type(value)
+        else:
+            model_class = self.model_class
+        return export_loop(model_class, value, context=context)
+
+
+class ListType(CompoundType):
+    """A field for storing a list of items, all of which must conform to the type
+    specified by the ``field`` parameter.
+
+    Use it like this::
+
+        ...
+        categories = ListType(StringType)
     """
 
     primitive_type = list
     native_type = list
 
-    MESSAGES = {
-        'point_min': _("{0} value {1} should be greater than or equal to {2}."),
-        'point_max': _("{0} value {1} should be less than or equal to {2}."),
-    }
+    def __init__(self,
+                 field,  # type: T
+                 min_size=None, max_size=None, **kwargs):
+        # type: (...) -> typing.List[T]
+
+        self.field = self._init_field(field, kwargs)
+        self.min_size = min_size
+        self.max_size = max_size
+
+        validators = [self.check_length] + kwargs.pop("validators", [])
+
+        super(ListType, self).__init__(validators=validators, **kwargs)
+
+    @property
+    def model_class(self):
+        return self.field.model_class
+
+    def _repr_info(self):
+        return self.field.__class__.__name__
 
     def _mock(self, context=None):
-        return (random.randrange(-90, 90), random.randrange(-180, 180))
+        random_length = get_value_in(self.min_size, self.max_size)
 
-    @classmethod
-    def _normalize(cls, value):
-        if isinstance(value, dict):
-            # py3: ensure list and not view
-            return list(value.values())
-        else:
-            return list(value)
+        return [self.field._mock(context) for dummy in range(random_length)]
 
-    def to_native(self, value, context=None):
-        """Make sure that a geo-value is of type (x, y)
+    def _coerce(self, value):
+        if isinstance(value, list):
+            return value
+        elif isinstance(value, (string_type, Mapping)): # unacceptable iterables
+            pass
+        elif isinstance(value, Sequence):
+            return value
+        elif isinstance(value, Iterable):
+            return value
+        raise ConversionError(_('Could not interpret the value as a list'))
+
+    def _convert(self, value, context):
+        value = self._coerce(value)
+        data = []
+        errors = {}
+        for index, item in enumerate(value):
+            try:
+                data.append(context.field_converter(self.field, item, context))
+            except BaseError as exc:
+                errors[index] = exc
+        if errors:
+            raise CompoundError(errors)
+        return data
+
+    def check_length(self, value, context):
+        list_length = len(value) if value else 0
+
+        if self.min_size is not None and list_length < self.min_size:
+            message = ({
+                True: _('Please provide at least %d item.'),
+                False: _('Please provide at least %d items.'),
+            }[self.min_size == 1]) % self.min_size
+            raise ValidationError(message)
+
+        if self.max_size is not None and list_length > self.max_size:
+            message = ({
+                True: _('Please provide no more than %d item.'),
+                False: _('Please provide no more than %d items.'),
+            }[self.max_size == 1]) % self.max_size
+            raise ValidationError(message)
+
+    def _export(self, list_instance, format, context):
+        """Loops over each item in the model and applies either the field
+        transform or the multitype transform.  Essentially functions the same
+        as `transforms.export_loop`.
         """
-        if not isinstance(value, (tuple, list, dict)):
-            raise ConversionError(_('GeoPointType can only accept tuples, lists, or dicts'))
-        elements = self._normalize(value)
-        if not len(elements) == 2:
-            raise ConversionError(_('Value must be a two-dimensional point'))
-        if not all(isinstance(v, (float, int)) for v in elements):
-            raise ConversionError(_('Both values in point must be float or int'))
-        return value
-
-    def validate_range(self, value, context=None):
-        latitude, longitude = self._normalize(value)
-        if latitude < -90:
-            raise ValidationError(
-                self.messages['point_min'].format('Latitude', latitude, '-90')
-            )
-        if latitude > 90:
-            raise ValidationError(
-                self.messages['point_max'].format('Latitude', latitude, '90')
-            )
-        if longitude < -180:
-            raise ValidationError(
-                self.messages['point_min'].format('Longitude', longitude, -180)
-            )
-        if longitude > 180:
-            raise ValidationError(
-                self.messages['point_max'].format('Longitude', longitude, 180)
-            )
+        data = []
+        _export_level = self.field.get_export_level(context)
+        if _export_level == DROP:
+            return data
+        for value in list_instance:
+            shaped = self.field.export(value, format, context)
+            if shaped is None:
+                if _export_level <= NOT_NONE:
+                    continue
+            elif self.field.is_compound and len(shaped) == 0:
+                if _export_level <= NONEMPTY:
+                    continue
+            data.append(shaped)
+        return data
 
 
-class MultilingualStringType(BaseType):
+class DictType(CompoundType):
+    """A field for storing a mapping of items, the values of which must conform to the type
+    specified by the ``field`` parameter.
+
+    Use it like this::
+
+        ...
+        categories = DictType(StringType)
 
     """
-    A multilanguage string field, stored as a dict with {'locale': 'localized_value'}.
 
-    Minimum and maximum lengths apply to each of the localized values.
+    primitive_type = dict
+    native_type = dict
 
-    At least one of ``default_locale`` or ``context.app_data['locale']`` must be defined
-    when calling ``.to_primitive``.
+    def __init__(self, field, coerce_key=None, **kwargs):
+        # type: (...) -> typing.Dict[str, T]
 
-    """
+        self.field = self._init_field(field, kwargs)
+        self.coerce_key = coerce_key or str
+        super(DictType, self).__init__(**kwargs)
 
-    primitive_type = str
-    native_type = str
+    @property
+    def model_class(self):
+        return self.field.model_class
 
-    allow_casts = (int, bytes)
+    def _repr_info(self):
+        return self.field.__class__.__name__
 
-    MESSAGES = {
-        'convert': _("Couldn't interpret value as string."),
-        'max_length': _("String value in locale {0} is too long."),
-        'min_length': _("String value in locale {0} is too short."),
-        'locale_not_found': _("No requested locale was available."),
-        'no_locale': _("No default or explicit locales were given."),
-        'regex_locale': _("Name of locale {0} did not match validation regex."),
-        'regex_localized': _("String value in locale {0} did not match validation regex."),
-    }
+    def _convert(self, value, context, safe=False):
+        if not isinstance(value, Mapping):
+            raise ConversionError(_('Only mappings may be used in a DictType'))
 
-    LOCALE_REGEX = r'^[a-z]{2}(:?_[A-Z]{2})?$'
+        data = {}
+        errors = {}
+        for k, v in iteritems(value):
+            try:
+                data[self.coerce_key(k)] = context.field_converter(self.field, v, context)
+            except BaseError as exc:
+                errors[k] = exc
+        if errors:
+            raise CompoundError(errors)
+        return data
 
-    def __init__(self, regex=None, max_length=None, min_length=None,
-                 default_locale=None, locale_regex=LOCALE_REGEX, **kwargs):
-        self.regex = re.compile(regex) if regex else None
-        self.max_length = max_length
-        self.min_length = min_length
-        self.default_locale = default_locale
-        self.locale_regex = re.compile(locale_regex) if locale_regex else None
-
-        super(MultilingualStringType, self).__init__(**kwargs)
-
-    def _mock(self, context=None):
-        return random_string(get_value_in(self.min_length, self.max_length))
-
-    def to_native(self, value, context=None):
-        """Make sure a MultilingualStringType value is a dict or None."""
-
-        if not (value is None or isinstance(value, dict)):
-            raise ConversionError(_('Value must be a dict or None'))
-
-        return value
-
-    def to_primitive(self, value, context=None):
+    def _export(self, dict_instance, format, context):
+        """Loops over each item in the model and applies either the field
+        transform or the multitype transform.  Essentially functions the same
+        as `transforms.export_loop`.
         """
-        Use a combination of ``default_locale`` and ``context.app_data['locale']`` to return
-        the best localized string.
+        data = {}
+        _export_level = self.field.get_export_level(context)
+        if _export_level == DROP:
+            return data
+        for key, value in iteritems(dict_instance):
+            shaped = self.field.export(value, format, context)
+            if shaped is None:
+                if _export_level <= NOT_NONE:
+                    continue
+            elif self.field.is_compound and len(shaped) == 0:
+                if _export_level <= NONEMPTY:
+                    continue
+            data[key] = shaped
+        return data
 
-        """
-        if value is None:
-            return None
-
-        context_locale = None
-        if context and 'locale' in context.app_data:
-            context_locale = context.app_data['locale']
-
-        # Build a list of all possible locales to try
-        possible_locales = []
-        for locale in (context_locale, self.default_locale):
-            if not locale:
-                continue
-
-            if isinstance(locale, string_type):
-                possible_locales.append(locale)
-            else:
-                possible_locales.extend(locale)
-
-        if not possible_locales:
-            raise ConversionError(self.messages['no_locale'])
-
-        for locale in possible_locales:
-            if locale in value:
-                localized = value[locale]
-                break
-        else:
-            raise ConversionError(self.messages['locale_not_found'])
-
-        if not isinstance(localized, str):
-            if isinstance(localized, self.allow_casts):
-                if isinstance(localized, bytes):
-                    localized = str(localized, 'utf-8')
-                else:
-                    localized = str(localized)
-            else:
-                raise ConversionError(self.messages['convert'])
-
-        return localized
-
-    def validate_length(self, value, context=None):
-        for locale, localized in value.items():
-            len_of_value = len(localized) if localized else 0
-
-            if self.max_length is not None and len_of_value > self.max_length:
-                raise ValidationError(self.messages['max_length'].format(locale))
-
-            if self.min_length is not None and len_of_value < self.min_length:
-                raise ValidationError(self.messages['min_length'].format(locale))
-
-    def validate_regex(self, value, context=None):
-        if self.regex is None and self.locale_regex is None:
-            return
-
-        for locale, localized in value.items():
-            if self.regex is not None and self.regex.match(localized) is None:
-                raise ValidationError(
-                    self.messages['regex_localized'].format(locale))
-
-            if self.locale_regex is not None and self.locale_regex.match(locale) is None:
-                raise ValidationError(
-                    self.messages['regex_locale'].format(locale))
-
-
-if PY2:
-    # Python 2 names cannot be unicode
-    __all__ = [n.encode('ascii') for n in __all__]
