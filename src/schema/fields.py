@@ -10,6 +10,27 @@ from sanic import exceptions
 
 from . import datetime_helper
 from .undefined import Undefined
+from typing import Sequence, Mapping
+
+
+def to_primitive(obj):
+    if obj is None:
+        return None
+    if hasattr(obj, 'to_primitive') and callable(getattr(obj, 'to_primitive')):
+        return obj.to_primitive()
+    if isinstance(obj, (int, float, bool, str)):
+        return obj
+    if isinstance(obj, datetime.datetime):
+        return datetime_helper.get_time_str(obj)
+    if isinstance(obj, datetime.date):
+        return datetime_helper.get_date_str(obj)
+    if isinstance(obj, Sequence):
+        return [to_primitive(e) for e in obj]
+    elif isinstance(obj, Mapping):
+        return dict(
+            (k, to_primitive(v)) for k, v in obj.items()
+        )
+    return str(obj)
 
 
 class FieldMeta(type):
@@ -50,7 +71,7 @@ class BaseField(metaclass=FieldMeta):
     Validators that need to access variables on the instance
     can be defined be implementing methods whose names start with ``validate_``
     and accept one parameter (in addition to ``self``)
-    
+
     :param label:
         Brief human-readable label
     :param help_text:
@@ -139,7 +160,7 @@ class BaseField(metaclass=FieldMeta):
     def to_primitive(self, value):
         """Convert internal data to a value safe to serialize.
         """
-        return value
+        return to_primitive(value)
 
     def to_native(self, value):
         """
@@ -163,7 +184,7 @@ class BaseField(metaclass=FieldMeta):
 
         return value
 
-    def check_required(self, value):
+    def validate_required(self, value):
         if self.required and (value is None or value is Undefined):
             raise exceptions.InvalidUsage(self.messages['required'].format(self.label))
 
@@ -190,9 +211,6 @@ class UUIDField(BaseField):
             except (TypeError, ValueError):
                 raise exceptions.InvalidUsage(self.messages['convert'].format(self.label, value))
         return value
-
-    def to_primitive(self, value):
-        return str(value)
 
 
 class StringField(BaseField):
@@ -383,9 +401,6 @@ class DateField(BaseField):
         except (ValueError, TypeError):
             raise exceptions.InvalidUsage(self.messages['parse'].format(self.label))
 
-    def to_primitive(self, value):
-        return datetime_helper.get_date_str(value)
-
 
 class DateTimeField(BaseField):
     """Convert to and from ISO8601 datetime value.
@@ -405,9 +420,6 @@ class DateTimeField(BaseField):
             return datetime_helper.parse_datetime(value)
         except (ValueError, TypeError):
             raise exceptions.InvalidUsage(self.messages['parse'].format(self.label))
-
-    def to_primitive(self, value):
-        return datetime_helper.get_time_str(value)
 
 
 class TimestampField(BaseField):
@@ -432,7 +444,6 @@ class TimestampField(BaseField):
 
 
 class EmailField(StringField):
-
     """A field that validates input as an E-Mail-Address.
     """
 
@@ -442,13 +453,12 @@ class EmailField(StringField):
 
     EMAIL_REGEX = re.compile(r"""^(
         ( ( [%(atext)s]+ (\.[%(atext)s]+)* ) | ("( [%(qtext)s\s] | \\[%(vchar)s\s] )*") )
-        @((?!-)[A-Z0-9-]{1,63}(?<!-)\.)+[A-Z]{2,63})$"""
-        % {
-            'atext': '-A-Z0-9!#$%&\'*+/=?^_`{|}~',
-            'qtext': '\x21\x23-\x5B\\\x5D-\x7E',
-            'vchar': '\x21-\x7E'
-        },
-        re.I + re.X)
+        @((?!-)[A-Z0-9-]{1,63}(?<!-)\.)+[A-Z]{2,63})$""" % {
+        'atext': '-A-Z0-9!#$%&\'*+/=?^_`{|}~',
+        'qtext': '\x21\x23-\x5B\\\x5D-\x7E',
+        'vchar': '\x21-\x7E'
+    },
+                             re.I + re.X)
 
     def validate_email(self, value):
         if not EmailField.EMAIL_REGEX.match(value):
@@ -456,7 +466,6 @@ class EmailField(StringField):
 
 
 class PhoneField(StringField):
-
     """A field that validates input as a phone number.
     """
 
@@ -486,171 +495,61 @@ class IDField(StringField):
             raise exceptions.InvalidUsage(self.messages['ID'].format(self.label, value))
 
 
-class CompoundField(BaseField):
-
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        self.is_compound = True
-        try:
-            self.field.parent_field = self
-        except AttributeError:
-            pass
-
-    def _setup(self, field_name, owner_model):
-        # Recursively set up inner fields.
-        if hasattr(self, 'field'):
-            self.field._setup(None, owner_model)
-        super()._setup(field_name, owner_model)
-
-    def to_native(self, value, context=None):
-        context = context or get_export_context(to_native_converter)
-        return to_native_converter(self, value, context)
-
-    def to_primitive(self, value, context=None):
-        context = context or get_export_context(to_primitive_converter)
-        return to_primitive_converter(self, value, context)
-
-    def _init_field(self, field, options):
-        """
-        Instantiate the inner field that represents each element within this compound type.
-        In case the inner field is itself a compound type, its inner field can be provided
-        as the ``nested_field`` keyword argument.
-        """
-        if not isinstance(field, BaseType):
-            nested_field = options.pop('nested_field', None) or options.pop('compound_field', None)
-            if nested_field:
-                field = field(field=nested_field, **options)
-            else:
-                field = field(**options)
-        return field
-
-
-class ModelType(CompoundType):
+class ModelField(BaseField):
     """A field that can hold an instance of the specified model."""
-
     primitive_type = dict
 
-    @property
-    def native_type(self):
-        return self.model_class
-
-    @property
-    def fields(self):
-        return self.model_class.fields
-
-    @property
-    def model_class(self):
-        if self._model_class:
-            return self._model_class
-
-        model_class = import_string(self.model_name)
-        self._model_class = model_class
-        return model_class
-
-    def __init__(self,
-                 model_spec,  # type: typing.Type[T]
-                 **kwargs):
-        # type: (...) -> T
-
-        if isinstance(model_spec, ModelMeta):
-            self._model_class = model_spec
-            self.model_name = self.model_class.__name__
-        elif isinstance(model_spec, string_type):
-            self._model_class = None
-            self.model_name = model_spec
-        else:
-            raise TypeError("ModelType: Expected a model, got an argument "
-                            "of the type '{}'.".format(model_spec.__class__.__name__))
-
-        super(ModelType, self).__init__(**kwargs)
+    def __init__(self, label, model_spec, **kwargs):
+        self.model_spec = model_spec
+        super().__init__(label, **kwargs)
 
     def _repr_info(self):
-        return self.model_class.__name__
-
-    def _mock(self, context=None):
-        return self.model_class.get_mock_object(context)
-
-    def _setup(self, field_name, owner_model):
-        # Resolve possible name-based model reference.
-        if not self._model_class:
-            if self.model_name == owner_model.__name__:
-                self._model_class = owner_model
-            else:
-                pass  # Intentionally left blank, it will be setup later.
-        super(ModelType, self)._setup(field_name, owner_model)
+        return self.model_spec.__name__
 
     def pre_setattr(self, value):
-        if value is not None \
-          and not isinstance(value, Model):
-            if not isinstance(value, dict):
-                raise ConversionError(_('Model conversion requires a model or dict'))
-            value = self.model_class(value)
-        return value
+        if isinstance(value, self.model_spec):
+            return value
+        if isinstance(value, dict):
+            return self.model_spec(value)
+        raise exceptions.ServerError('{0}的值设置失败, 应是{1}或者dict类型', self.label, self.model_spec.__name__)
 
-    def _convert(self, value, context):
-        field_model_class = self.model_class
-        if isinstance(value, field_model_class):
-            model_class = type(value)
-        elif isinstance(value, dict):
-            model_class = field_model_class
-        else:
-            raise ConversionError(
-                _("Input must be a mapping or '%s' instance") % field_model_class.__name__)
-        if context.convert and context.oo:
-            return model_class(value, context=context)
-        else:
-            return model_class.convert(value, context=context)
-
-    def _export(self, value, format, context):
-        if isinstance(value, Model):
-            model_class = type(value)
-        else:
-            model_class = self.model_class
-        return export_loop(model_class, value, context=context)
+    def to_native(self, value):
+        if isinstance(value, self.model_spec):
+            return value
+        if isinstance(value, dict):
+            return self.model_spec(value)
+        raise exceptions.ServerError('{0}的值应是{1}或者dict类型', self.label, self.model_spec.__name__)
 
 
-class ListType(CompoundType):
+class ListField(BaseField):
     """A field for storing a list of items, all of which must conform to the type
     specified by the ``field`` parameter.
 
     Use it like this::
 
         ...
-        categories = ListType(StringType)
+        categories = ListField('类别', StringType())
     """
 
     primitive_type = list
     native_type = list
 
-    def __init__(self,
-                 field,  # type: T
-                 min_size=None, max_size=None, **kwargs):
-        # type: (...) -> typing.List[T]
-
-        self.field = self._init_field(field, kwargs)
+    def __init__(self, label, field, min_size=None, max_size=None, **kwargs):
+        self.field = field
         self.min_size = min_size
         self.max_size = max_size
-
-        validators = [self.check_length] + kwargs.pop("validators", [])
-
-        super(ListType, self).__init__(validators=validators, **kwargs)
-
-    @property
-    def model_class(self):
-        return self.field.model_class
+        super().__init__(label, **kwargs)
 
     def _repr_info(self):
         return self.field.__class__.__name__
 
-    def _mock(self, context=None):
-        random_length = get_value_in(self.min_size, self.max_size)
-
-        return [self.field._mock(context) for dummy in range(random_length)]
+    def to_native(self, value):
+        pass
 
     def _coerce(self, value):
         if isinstance(value, list):
             return value
-        elif isinstance(value, (string_type, Mapping)): # unacceptable iterables
+        elif isinstance(value, (string_type, Mapping)):  # unacceptable iterables
             pass
         elif isinstance(value, Sequence):
             return value
@@ -671,42 +570,22 @@ class ListType(CompoundType):
             raise CompoundError(errors)
         return data
 
-    def check_length(self, value, context):
+    def validate_length(self, value, context):
         list_length = len(value) if value else 0
 
         if self.min_size is not None and list_length < self.min_size:
             message = ({
-                True: _('Please provide at least %d item.'),
-                False: _('Please provide at least %d items.'),
-            }[self.min_size == 1]) % self.min_size
+                           True: _('Please provide at least %d item.'),
+                           False: _('Please provide at least %d items.'),
+                       }[self.min_size == 1]) % self.min_size
             raise ValidationError(message)
 
         if self.max_size is not None and list_length > self.max_size:
             message = ({
-                True: _('Please provide no more than %d item.'),
-                False: _('Please provide no more than %d items.'),
-            }[self.max_size == 1]) % self.max_size
+                           True: _('Please provide no more than %d item.'),
+                           False: _('Please provide no more than %d items.'),
+                       }[self.max_size == 1]) % self.max_size
             raise ValidationError(message)
-
-    def _export(self, list_instance, format, context):
-        """Loops over each item in the model and applies either the field
-        transform or the multitype transform.  Essentially functions the same
-        as `transforms.export_loop`.
-        """
-        data = []
-        _export_level = self.field.get_export_level(context)
-        if _export_level == DROP:
-            return data
-        for value in list_instance:
-            shaped = self.field.export(value, format, context)
-            if shaped is None:
-                if _export_level <= NOT_NONE:
-                    continue
-            elif self.field.is_compound and len(shaped) == 0:
-                if _export_level <= NONEMPTY:
-                    continue
-            data.append(shaped)
-        return data
 
 
 class DictType(CompoundType):
@@ -771,4 +650,3 @@ class DictType(CompoundType):
                     continue
             data[key] = shaped
         return data
-
