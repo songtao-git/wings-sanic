@@ -1,210 +1,117 @@
 # -*- coding: utf-8 -*-
-import copy
 import inspect
-import weakref
-from abc import ABCMeta
-from collections import MutableMapping
+from collections import OrderedDict
 
-import six
-
-from simplemodels.exceptions import ModelValidationError, DocumentError
-from simplemodels.fields import ExtraField, SimpleField
-
-__all__ = ['Document', 'ImmutableDocument']
-
-registry = weakref.WeakValueDictionary()
+from .undefined import Undefined
+from .fields import BaseField
+from copy import deepcopy
 
 
-class DocumentMeta(ABCMeta):
-    """ Metaclass for collecting fields info """
+class SerializerMeta(type):
+    """
+    Metaclass for Serializer.
+    """
 
-    def __new__(mcs, name, parents, dct):
+    def __new__(mcs, name, bases, attrs):
         """
-        :param name: class name
-        :param parents: class parents
-        :param dct: dict: includes class attributes, class methods,
-        static methods, etc
-        :return: new class
+        Meta class for Serializer. Merges `fields`, `validators` and `meta`.
         """
 
-        _fields = {}
-        _meta = {}
+        # Structures used to accumulate meta info
+        meta = OrderedDict()
+        fields = OrderedDict()
+        validators = OrderedDict()  # Model level
+        current_fields = OrderedDict()
 
-        # Document inheritance implementation
-        for parent_cls in parents:
+        # Accumulate info from parent classes
+        for base in reversed(bases):
             # Copy parent fields
-            parent_fields = getattr(parent_cls, '_fields', {})
-            _fields.update(parent_fields)
+            fields.update(getattr(base, '_fields', {}))
 
             # Copy parent meta options
-            parent_meta = getattr(parent_cls, '_meta', {})
-            _meta.update(parent_meta)
+            meta.update(getattr(base, '_meta', {}))
 
-        # Inspect subclass to save SimpleFields and require field names
-        for field_name, obj in dct.items():
-            if issubclass(type(obj), SimpleField):
-                # set SimpleField text name as a private `_name` attribute
-                obj._name = field_name
-                obj._holder_name = name  # class holder name
-                _fields[obj.name] = obj
+            # Copy parent validators
+            validators.update(getattr(base, '_validators', {}))
 
-            elif all([field_name == 'Meta', inspect.isclass(obj)]):
-                _meta.update(obj.__dict__)
+        for attr_name, attr in attrs.items():
+            if attr_name.startswith('validate_'):
+                validators[attr_name[9:]] = attr
+            if isinstance(attr, BaseField):
+                fields[attr_name] = attr
+                current_fields[attr_name] = attr
+            elif all([attr_name == 'Meta', inspect.isclass(attr)]):
+                meta.update(attr.__dict__)
 
-        dct['_fields'] = _fields
-        dct['_parents'] = tuple(parents)
-        dct['_meta'] = _meta
+        attrs['_fields'] = fields
+        attrs['_validators'] = validators
+        attrs['_meta'] = meta
 
-        cls = super(DocumentMeta, mcs).__new__(mcs, name, parents, dct)
-        registry[name] = cls
+        cls = type.__new__(mcs, name, bases, attrs)
+        # setup current model fields(field_name, owner_model)
+        for attr_name, attr in current_fields.items():
+            attr._setup(attr_name, cls)
+
         return cls
 
 
-@six.add_metaclass(DocumentMeta)
-class Document(MutableMapping):
-    """ Main class to represent structured dict-like document """
+class Serializer(metaclass=SerializerMeta):
 
-    class Meta:
-        # make a model 'schemaless'
-        ALLOW_EXTRA_FIELDS = False
+    """
+    A serializer instance used to `to_native`(validate) or `to_primitive` the input data
+    :param dict fields:
+        KeyValuePair(field_name: str, field: BaseField), the `fields` and
+        serializer's declared fields will compose final `fields`.
+    :param bool partial:
+        Allow partial data to validate. Essentially drops the ``required=True``
+        settings from field definitions. Default: False
+    :param bool many:
+        omit a list if `many=True`. Default: False
+    :param validators:
+        A list of callables. Each callable receives the value after it has been
+        converted into a rich python type. Default: []
+    """
 
-        # if field is not passed to the constructor, exclude it from structure
-        OMIT_MISSED_FIELDS = False
+    def __init__(self, fields=None, partial=False, many=False, validators=None):
+        self.fields = deepcopy(self._fields)
+        if fields:
+            self.fields.update(fields)
+        self.validators = list(self._validators.values())
+        if validators:
+            self.validators += list(validators)
+        self.partial = partial
+        self.many = many
 
-        # TODO: it might make sense to add option to raise an error if unknown
-        # field is given for the document
-
-    def __init__(self, data=None, **kwargs):
-        if data is None:
-            data = {}
-
-        if self._meta['ALLOW_EXTRA_FIELDS']:
-            self._fields = copy.deepcopy(self._fields)
-
-        if not isinstance(data, MutableMapping):
-            raise ModelValidationError(
-                "Data must be instance of mapping, but got '%s'!" %
-                type(data))
-
-        data = copy.deepcopy(data)
-        data = self._clean_data(data)
-
-        self._prepare_fields(data, **kwargs)
-        self._post_init_validation()
-
-    def __getitem__(self, name):
-        return getattr(self, name)
-
-    def __setitem__(self, name, value):
-        setattr(self, name, value)
-
-    def __delitem__(self, name):
-        delattr(self, name)
-
-    def __iter__(self):
-        """Iterator over available field names of the Document.
-        Fields, which values are `None` will be returned only
-        in case `OMIT_MISSED_FIELDS` meta variable is `False`.
+    def validate(self, partial=False, convert=True, app_data=None, **kwargs):
         """
-        for field_name in self._fields:
-            if self.get(field_name) is not None or not self._meta['OMIT_MISSED_FIELDS']:
-                yield field_name
+        Validates the state of the model. If the data is invalid, raises a ``DataError``
+        with error messages.
 
-    def __len__(self):
-        return len(self._fields)
-
-    def as_dict(self):
-        return {
-            field_name: self._fields[field_name].to_python(value)
-            for field_name, value in self.items()
-        }
-
-    def _prepare_fields(self, data, **kwargs):
-        """Do field validations and set defaults
-        :param data: init parameters
-        :return:
+        :param bool partial:
+            Allow partial data to validate. Essentially drops the ``required=True``
+            settings from field definitions. Default: False
+        :param convert:
+            Controls whether to perform import conversion before validating.
+            Can be turned off to skip an unnecessary conversion step if all values
+            are known to have the right datatypes (e.g., when validating immediately
+            after the initial import). Default: True
         """
+        if not self._data.converted and partial:
+            return  # no new input data to validate
+        try:
+            data = self._convert(validate=True,
+                partial=partial, convert=convert, app_data=app_data, **kwargs)
+            self._data.valid = data
+        except DataError as e:
+            valid = dict(self._data.valid)
+            valid.update(e.partial_data)
+            self._data.valid = valid
+            raise
+        finally:
+            self._data.converted = {}
 
-        # It validates values on set, check fields.SimpleField#__set_value__
-        for field_name, field_obj in self._fields.items():
-            field_val = data.get(field_name, field_obj.default)
+    def to_native(self, role=None, app_data=None, **kwargs):
+        return to_native(self._schema, self, role=role, app_data=app_data, **kwargs)
 
-            # Build model structure
-            if field_name in data:
-                # remove field from data, so at the end
-                # only extra fields would left.
-                data.pop(field_name)
-
-                # set presented field
-                field_obj.__set_value__(self, field_val, **kwargs)
-            else:
-                # field is not presented in the given init parameters
-                if field_val is None and self._meta['OMIT_MISSED_FIELDS']:
-                    # Run validation even on skipped fields to validate
-                    # 'required' and other attributes
-                    field_obj.validate(field_val)
-                    continue
-                field_obj.__set_value__(self, field_val, **kwargs)
-
-        # Create extra fields if any were not filtered by `_clean_data` method.
-        # ALLOW_EXTRA_FIELDS has an effect here
-        for key, value in data.items():
-            # py3 will raise an AttributeError without explicitly given 'None'
-            # as a 3rd parameter
-            if getattr(self, key, None):
-                raise DocumentError(
-                    "Can't add extra field '%s.%s' because document already has "
-                    "entity with the same name" % (self.__class__.__name__, key))
-            field_obj = ExtraField()
-            field_obj._name = key
-            field_obj._holder_name = self.__class__.__name__
-            self._fields[key] = field_obj
-
-            field_obj.__set_value__(self, value, **kwargs)
-        return data
-
-    @classmethod
-    def _clean_data(cls, kwargs):
-        """Clean with excluding extra fields if the model has
-        ALLOW_EXTRA_FIELDS meta flag on
-        :param kwargs: dict
-        :return: cleaned kwargs
-        """
-        fields = getattr(cls, '_fields', {})
-
-        # put everything extra in the document
-        if cls._meta['ALLOW_EXTRA_FIELDS']:
-            return kwargs
-        else:
-            return {k: v for k, v in kwargs.items() if k in fields}
-
-    def _post_init_validation(self):
-        """Validate model after init with validate_%s extra methods
-        """
-        internals = dir(self)
-        # NOTE: this can be done in the DocumentMeta
-        for field_name, field_obj in self._fields.items():
-            method_name = 'validate_%s' % field_name
-            if method_name in internals:
-                validation_method = getattr(self, method_name)
-                if inspect.isfunction(validation_method):
-                    # NOTE: probably need to pass immutable copy of the object
-                    validation_method(self, self[field_name])
-                else:
-                    raise ModelValidationError(
-                        '%s (%r) is not a function' %
-                        (method_name, validation_method,))
-
-    def __repr__(self):
-        return '%s(%s)' % (self.__class__.__name__, dict(self))
-
-
-class ImmutableDocument(Document):
-    """Read only document. Useful for validation purposes only"""
-
-    def __setattr__(self, key, value):
-        raise DocumentError(
-            '{} is immutable. Set operation is not allowed.'.format(self))
-
-    def __setitem__(self, key, value):
-        return setattr(self, key, value)
+    def to_primitive(self, role=None, app_data=None, **kwargs):
+        return to_primitive(self._schema, self, role=role, app_data=app_data, **kwargs)

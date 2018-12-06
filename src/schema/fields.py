@@ -13,7 +13,7 @@ from .undefined import Undefined
 from typing import Sequence, Mapping
 
 
-def to_primitive(obj):
+def loop_primitive(obj, spec):
     if obj is None:
         return None
     if hasattr(obj, 'to_primitive') and callable(getattr(obj, 'to_primitive')):
@@ -31,6 +31,10 @@ def to_primitive(obj):
             (k, to_primitive(v)) for k, v in obj.items()
         )
     return str(obj)
+
+
+def loop_native(value, spec):
+    pass
 
 
 class FieldMeta(type):
@@ -57,7 +61,7 @@ class FieldMeta(type):
 
         for attr_name, attr in attrs.items():
             if attr_name.startswith("validate_"):
-                validators[attr_name] = 1
+                validators[attr_name[9:]] = attr
 
         attrs["_validators"] = validators
 
@@ -111,6 +115,8 @@ class BaseField(metaclass=FieldMeta):
                  default=Undefined, choices=None, validators=None,
                  serialize_when_none=True, messages=None):
         super().__init__()
+        if not label or not isinstance(label, str):
+            raise ValueError('label must be a effective string')
         self.label = label
         self.help_text = help_text
         self.required = required
@@ -119,7 +125,7 @@ class BaseField(metaclass=FieldMeta):
             raise TypeError('"choices" must be a non-string Iterable')
         self.choices = choices
 
-        self.validators = [getattr(self, validator_name) for validator_name in self._validators]
+        self.validators = list(self._validators.values())
         if validators:
             self.validators += list(validators)
         self.serialize_when_none = serialize_when_none
@@ -127,9 +133,6 @@ class BaseField(metaclass=FieldMeta):
 
         self.name = None
         self.owner_model = None
-        self.parent_field = None
-        self.typeclass = self.__class__
-        self.is_compound = False
 
     def __repr__(self):
         type_ = "%s(%s) instance" % (self.__class__.__name__, self._repr_info() or '')
@@ -169,15 +172,7 @@ class BaseField(metaclass=FieldMeta):
         return value
 
     def validate(self, value):
-        """
-        Validate the field and return a converted value or raise a
-        ``InvalidUsage`` with a list of errors raised by the validation
-        chain. Stop the validation process from continuing through the
-        validators by raising ``StopValidationError`` instead of ``ValidationError``.
-
-        """
-        if self.is_compound:
-            self.to_native(value)
+        value = self.to_native(value)
 
         for validator in self.validators:
             validator(value)
@@ -511,14 +506,14 @@ class ModelField(BaseField):
             return value
         if isinstance(value, dict):
             return self.model_spec(value)
-        raise exceptions.ServerError('{0}的值设置失败, 应是{1}或者dict类型', self.label, self.model_spec.__name__)
+        raise exceptions.ServerError('{0}的值设置失败, 应是{1}或者字典类型'.format(self.label, self.model_spec.__name__))
 
     def to_native(self, value):
         if isinstance(value, self.model_spec):
             return value
         if isinstance(value, dict):
             return self.model_spec(value)
-        raise exceptions.ServerError('{0}的值应是{1}或者dict类型', self.label, self.model_spec.__name__)
+        raise exceptions.ServerError('{0}的值应是{1}或者字典类型'.format(self.label, self.model_spec.__name__))
 
 
 class ListField(BaseField):
@@ -535,6 +530,8 @@ class ListField(BaseField):
     native_type = list
 
     def __init__(self, label, field, min_size=None, max_size=None, **kwargs):
+        if not isinstance(field, BaseField):
+            raise TypeError('field must be instance of BaseField')
         self.field = field
         self.min_size = min_size
         self.max_size = max_size
@@ -543,110 +540,45 @@ class ListField(BaseField):
     def _repr_info(self):
         return self.field.__class__.__name__
 
-    def to_native(self, value):
-        pass
-
     def _coerce(self, value):
         if isinstance(value, list):
             return value
-        elif isinstance(value, (string_type, Mapping)):  # unacceptable iterables
+        elif isinstance(value, (str, Mapping)):  # unacceptable iterables
             pass
         elif isinstance(value, Sequence):
             return value
         elif isinstance(value, Iterable):
             return value
-        raise ConversionError(_('Could not interpret the value as a list'))
+        raise exceptions.InvalidUsage('{0}应是列表'.format(self.label))
 
-    def _convert(self, value, context):
+    def to_native(self, value):
         value = self._coerce(value)
         data = []
-        errors = {}
         for index, item in enumerate(value):
             try:
-                data.append(context.field_converter(self.field, item, context))
-            except BaseError as exc:
-                errors[index] = exc
-        if errors:
-            raise CompoundError(errors)
+                data.append(self.field.to_native(item))
+            except exceptions.SanicException as exc:
+                raise exceptions.InvalidUsage('{0}的第{1}值有误:{2}'.format(self.label, index, exc))
         return data
 
-    def validate_length(self, value, context):
+    def validate_length(self, value):
         list_length = len(value) if value else 0
 
         if self.min_size is not None and list_length < self.min_size:
-            message = ({
-                           True: _('Please provide at least %d item.'),
-                           False: _('Please provide at least %d items.'),
-                       }[self.min_size == 1]) % self.min_size
-            raise ValidationError(message)
+            raise exceptions.InvalidUsage('{0}最少包含{1}项'.format(self.label, self.min_size))
 
         if self.max_size is not None and list_length > self.max_size:
-            message = ({
-                           True: _('Please provide no more than %d item.'),
-                           False: _('Please provide no more than %d items.'),
-                       }[self.max_size == 1]) % self.max_size
-            raise ValidationError(message)
+            raise exceptions.InvalidUsage('{0}最多包含{1}项'.format(self.label, self.max_size))
 
 
-class DictType(CompoundType):
-    """A field for storing a mapping of items, the values of which must conform to the type
-    specified by the ``field`` parameter.
-
-    Use it like this::
-
-        ...
-        categories = DictType(StringType)
-
+class DictType(BaseField):
+    """A field for storing a mapping of items.
     """
 
     primitive_type = dict
     native_type = dict
 
-    def __init__(self, field, coerce_key=None, **kwargs):
-        # type: (...) -> typing.Dict[str, T]
-
-        self.field = self._init_field(field, kwargs)
-        self.coerce_key = coerce_key or str
-        super(DictType, self).__init__(**kwargs)
-
-    @property
-    def model_class(self):
-        return self.field.model_class
-
-    def _repr_info(self):
-        return self.field.__class__.__name__
-
-    def _convert(self, value, context, safe=False):
+    def to_native(self, value):
         if not isinstance(value, Mapping):
-            raise ConversionError(_('Only mappings may be used in a DictType'))
-
-        data = {}
-        errors = {}
-        for k, v in iteritems(value):
-            try:
-                data[self.coerce_key(k)] = context.field_converter(self.field, v, context)
-            except BaseError as exc:
-                errors[k] = exc
-        if errors:
-            raise CompoundError(errors)
-        return data
-
-    def _export(self, dict_instance, format, context):
-        """Loops over each item in the model and applies either the field
-        transform or the multitype transform.  Essentially functions the same
-        as `transforms.export_loop`.
-        """
-        data = {}
-        _export_level = self.field.get_export_level(context)
-        if _export_level == DROP:
-            return data
-        for key, value in iteritems(dict_instance):
-            shaped = self.field.export(value, format, context)
-            if shaped is None:
-                if _export_level <= NOT_NONE:
-                    continue
-            elif self.field.is_compound and len(shaped) == 0:
-                if _export_level <= NONEMPTY:
-                    continue
-            data[key] = shaped
-        return data
+            raise exceptions.InvalidUsage('{0}应是字典类型'.format(self.label))
+        return dict(value)
