@@ -142,6 +142,12 @@ def to_primitive(obj):
     return str(data)
 
 
+def get_value(instance_or_dict, name, default=None):
+    if isinstance(instance_or_dict, Mapping):
+        return instance_or_dict.get(name, default)
+    return getattr(instance_or_dict, name, default)
+
+
 # ---------------------- Field -----------------------
 
 class FieldMeta(type):
@@ -268,39 +274,39 @@ class BaseField(metaclass=FieldMeta):
             default = default()
         return default
 
-    def to_primitive(self, value):
+    def to_primitive(self, value, context=None):
         """Convert internal data to a value safe to serialize.
         """
-        native_data = self.to_native(value)
+        native_data = self.to_native(value, context)
         if native_data is None:
             return None
         if self.primitive_type is not None and not isinstance(native_data, self.primitive_type):
             return self.primitive_type(native_data)
         return native_data
 
-    def _to_native(self, value):
+    def _to_native(self, value, context=None):
         return value
 
-    def to_native(self, value):
+    def to_native(self, value, context=None):
         """
         Convert untrusted data to a richer Python construct.
         """
-        value = self._to_native(value) if value is not None else None
+        value = self._to_native(value, context) if value is not None else None
         if value is None and self._default is not Undefined:
             value = self.default
         return value
 
-    def validate(self, value):
-        native_data = self.to_native(value)
+    def validate(self, value, context=None):
+        native_data = self.to_native(value, context)
         for validator in self.validators:
-            validator(native_data)
+            validator(native_data, context)
         return native_data
 
-    def validate_required(self, value):
+    def validate_required(self, value, context=None):
         if self.required and (value is None or value is Undefined):
             raise exceptions.InvalidUsage(self.messages['required'].format(self.label))
 
-    def validate_choices(self, value):
+    def validate_choices(self, value, context=None):
         if self.choices is not None:
             if value not in self.choices:
                 raise exceptions.InvalidUsage(self.messages['choices'].format(self.label, self.choices))
@@ -316,7 +322,7 @@ class UUIDField(BaseField):
         'convert': "{0}的值{1}不能转为UUID",
     }
 
-    def _to_native(self, value):
+    def _to_native(self, value, context=None):
         if not isinstance(value, uuid.UUID):
             try:
                 value = uuid.UUID(value)
@@ -343,7 +349,7 @@ class StringField(BaseField):
         self.min_length = min_length
         super().__init__(label, **kwargs)
 
-    def _to_native(self, value):
+    def _to_native(self, value, context=None):
         if isinstance(value, str):
             return value
         if isinstance(value, bytes):
@@ -353,7 +359,7 @@ class StringField(BaseField):
                 raise exceptions.InvalidUsage(self.messages['decode'].format(self.label))
         return str(value)
 
-    def validate_length(self, value):
+    def validate_length(self, value, context=None):
         length = len(value)
         if self.max_length is not None and length > self.max_length:
             raise exceptions.InvalidUsage(self.messages['max_length'].format(self.label, self.max_length))
@@ -361,7 +367,7 @@ class StringField(BaseField):
         if self.min_length is not None and length < self.min_length:
             raise exceptions.InvalidUsage(self.messages['min_length'].format(self.label, self.min_length))
 
-    def validate_regex(self, value):
+    def validate_regex(self, value, context=None):
         if self.regex is not None and self.regex.match(value) is None:
             raise exceptions.InvalidUsage(self.messages['regex'].format(self.label))
 
@@ -388,7 +394,7 @@ class NumberField(BaseField):
 
         super().__init__(label, **kwargs)
 
-    def _to_native(self, value):
+    def _to_native(self, value, context=None):
         if isinstance(value, bool):
             value = int(value)
         if isinstance(value, self.native_type):
@@ -407,7 +413,7 @@ class NumberField(BaseField):
 
         raise exceptions.InvalidUsage(self.messages['number_coerce'].format(self.label, value, self.number_type))
 
-    def validate_range(self, value):
+    def validate_range(self, value, context=None):
         if self.min_value is not None and value < self.min_value:
             raise exceptions.InvalidUsage(self.messages['number_min'].format(self.label, self.min_value))
 
@@ -443,7 +449,7 @@ class DecimalField(NumberField):
     native_type = decimal.Decimal
     number_type = '定点小数'
 
-    def _to_native(self, value):
+    def _to_native(self, value, context=None):
         if isinstance(value, decimal.Decimal):
             return value
 
@@ -472,7 +478,7 @@ class BooleanField(BaseField):
     TRUE_VALUES = ('True', 'true', '1')
     FALSE_VALUES = ('False', 'false', '0')
 
-    def _to_native(self, value):
+    def _to_native(self, value, context=None):
         if isinstance(value, str):
             if value in self.TRUE_VALUES:
                 value = True
@@ -499,7 +505,7 @@ class DateField(BaseField):
         'parse': "{0}日期格式错误,有效格式是ISO8601日期格式(YYYY-MM-DD)"
     }
 
-    def _to_native(self, value):
+    def _to_native(self, value, context=None):
         if isinstance(value, datetime.datetime):
             return value.date()
         if isinstance(value, datetime.date):
@@ -510,7 +516,7 @@ class DateField(BaseField):
         except (ValueError, TypeError):
             raise exceptions.InvalidUsage(self.messages['parse'].format(self.label))
 
-    def to_primitive(self, value):
+    def to_primitive(self, value, context=None):
         native_data = self.to_native(value)
         return datetime_helper.get_date_str(native_data)
 
@@ -526,7 +532,7 @@ class DateTimeField(BaseField):
         'parse': '{0}时间格式错误,有效格式是ISO8601时间格式',
     }
 
-    def _to_native(self, value):
+    def _to_native(self, value, context=None):
         if isinstance(value, datetime.datetime):
             return datetime_helper.get_utc_time(value)
         try:
@@ -534,8 +540,8 @@ class DateTimeField(BaseField):
         except (ValueError, TypeError):
             raise exceptions.InvalidUsage(self.messages['parse'].format(self.label))
 
-    def to_primitive(self, value):
-        native_data = self.to_native(value)
+    def to_primitive(self, value, context=None):
+        native_data = self.to_native(value, context)
         return datetime_helper.get_time_str(native_data)
 
 
@@ -547,7 +553,7 @@ class TimestampField(BaseField):
         'parse': '{0}时间戳有误',
     }
 
-    def _to_native(self, value):
+    def _to_native(self, value, context=None):
         if isinstance(value, datetime.datetime):
             return datetime_helper.get_utc_time(value)
         try:
@@ -556,8 +562,8 @@ class TimestampField(BaseField):
         except (ValueError, TypeError):
             raise exceptions.InvalidUsage(self.messages['parse'].format(self.label))
 
-    def to_primitive(self, value):
-        native_data = self.to_native(value)
+    def to_primitive(self, value, context=None):
+        native_data = self.to_native(value, context)
         return native_data.timestamp()
 
 
@@ -578,7 +584,7 @@ class EmailField(StringField):
     },
                              re.I + re.X)
 
-    def validate_email(self, value):
+    def validate_email(self, value, context=None):
         if not EmailField.EMAIL_REGEX.match(value):
             raise exceptions.InvalidUsage(self.messages['email'].format(self.label, value))
 
@@ -593,7 +599,7 @@ class PhoneField(StringField):
 
     PHONE_REGEX = re.compile(r"^1[3456789]\d{9}$")
 
-    def validate_phone(self, value):
+    def validate_phone(self, value, context=None):
         if not PhoneField.PHONE_REGEX.match(value):
             raise exceptions.InvalidUsage(self.messages['phone'].format(self.label, value))
 
@@ -608,7 +614,7 @@ class IDField(StringField):
 
     ID_REGEX = re.compile(r"(^\d{15}$)|(^\d{17}([0-9]|X)$)")
 
-    def validate_ID(self, value):
+    def validate_ID(self, value, context=None):
         if not IDField.ID_REGEX.match(value):
             raise exceptions.InvalidUsage(self.messages['ID'].format(self.label, value))
 
@@ -628,17 +634,17 @@ class SerializerField(BaseField):
     def _repr_info(self):
         return self.serializer.__class__.__name__
 
-    def _to_native(self, value):
-        return self.serializer.to_native(value)
+    def _to_native(self, value, context=None):
+        return self.serializer.to_native(value, context)
 
-    def validate(self, value):
-        value = self.serializer.validate(value) if value is not None else None
+    def validate(self, value, context=None):
+        value = self.serializer.validate(value, context) if value is not None else None
         for validator in self.validators:
-            validator(value)
+            validator(value, context)
         return value
 
-    def to_primitive(self, value):
-        return self.serializer.to_primitive(value) if value is not None else None
+    def to_primitive(self, value, context=None):
+        return self.serializer.to_primitive(value, context) if value is not None else None
 
 
 class ListField(BaseField):
@@ -676,45 +682,45 @@ class ListField(BaseField):
             return value
         raise exceptions.InvalidUsage('{0}应是列表'.format(self.label))
 
-    def _to_native(self, value):
+    def _to_native(self, value, context=None):
         value = self._coerce(value)
         data = []
         for index, item in enumerate(value):
             try:
-                data.append(self.field.to_native(item))
+                data.append(self.field.to_native(item, context))
             except exceptions.SanicException as exc:
                 raise exceptions.InvalidUsage('{0}的第{1}值有误:{2}'.format(self.label, index, exc))
         return data
 
-    def to_primitive(self, value):
+    def to_primitive(self, value, context=None):
         if not value:
             return None
         value = self._coerce(value)
         data = []
         for index, item in enumerate(value):
             try:
-                data.append(self.field.to_primitive(item))
+                data.append(self.field.to_primitive(item, context))
             except exceptions.SanicException as exc:
                 raise exceptions.InvalidUsage('{0}的第{1}值有误:{2}'.format(self.label, index, exc))
         return data
 
-    def validate(self, value):
+    def validate(self, value, context=None):
         data = None
         if value:
             value = self._coerce(value)
             data = []
             for index, item in enumerate(value):
                 try:
-                    data.append(self.field.validate(item))
+                    data.append(self.field.validate(item, context))
                 except exceptions.SanicException as exc:
                     raise exceptions.InvalidUsage('{0}的第{1}个值有误:{2}'.format(self.label, index, exc))
 
         for validator in self.validators:
-            validator(data)
+            validator(data, context)
 
         return data
 
-    def validate_length(self, value):
+    def validate_length(self, value, context=None):
         list_length = len(value) if value else 0
 
         if self.min_size is not None and list_length < self.min_size:
@@ -731,7 +737,7 @@ class JsonField(BaseField):
     primitive_type = None
     native_type = None
 
-    def to_native(self, value):
+    def to_native(self, value, context=None):
         try:
             if isinstance(value, six.binary_type):
                 value = value.decode('utf-8')
@@ -743,7 +749,7 @@ class JsonField(BaseField):
         except (TypeError, ValueError):
             raise exceptions.InvalidUsage('{0}的值不是有效的json格式')
 
-    def to_primitive(self, value):
+    def to_primitive(self, value, context=None):
         to_primitive(value)
 
 
@@ -801,9 +807,6 @@ class BaseSerializer(metaclass=SerializerMeta):
     """
     Base class for Serializer
     :param str label: Brief human-readable label
-    :param bool partial:
-        Allow partial data to validate. Essentially drops the ``required=True``
-        settings from field definitions. Default: False
     :param dict fields:
         KeyValuePair(field_name: str, field: BaseField), the `fields` and
         serializer's declared fields will compose final `fields`.
@@ -812,7 +815,7 @@ class BaseSerializer(metaclass=SerializerMeta):
         converted into a rich python type. Default: []
     """
 
-    def __init__(self, label, partial=False, fields=None, validators=None):
+    def __init__(self, label, fields=None, validators=None):
         if not label or not isinstance(label, str):
             raise ValueError('label must be a effective string')
         self.label = label
@@ -825,20 +828,19 @@ class BaseSerializer(metaclass=SerializerMeta):
         self.validators = [getattr(self, validator_name) for validator_name in self._validators]
         if validators:
             self.validators += list(validators)
-        self.partial = partial
 
-    def to_native(self, data):
+    def to_native(self, data, context=None):
         raise NotImplementedError
 
-    def to_primitive(self, data):
+    def to_primitive(self, data, context=None):
         raise NotImplementedError
 
-    def validate(self, data):
+    def validate(self, data, context=None):
         raise NotImplementedError
 
 
 class Serializer(BaseSerializer):
-    def to_native(self, data):
+    def to_native(self, data, context=None):
         if data is None:
             return None
         native_data = {}
@@ -850,38 +852,44 @@ class Serializer(BaseSerializer):
             else:
                 raise TypeError('"{0}" object has no attribute "{1}"'.format(data.__class__.__name__,
                                                                              field_name))
-            native_data[field_name] = field.to_native(field_data)
+            native_data[field_name] = field.to_native(field_data, context)
         return native_data
 
-    def validate(self, data):
+    def validate(self, data, context=None):
         """
         Validates the state of the model.
         """
-        data = self.to_native(data)
+
+        partial = get_value(context, 'partial', False)
+        data = self.to_native(data, context)
         if data is not None:
             validate_data = {}
             for field_name, field in self.fields.items():
                 field_data = data.get(field_name, None)
-                if field_data is None and self.partial:
+                if field_data is None and partial:
                     continue
-                validate_data[field_name] = field.validate(field_data)
+                validate_data[field_name] = field.validate(field_data, context)
             data = validate_data
 
         for validator in self.validators:
-            data = validator(self, data)
+            data = validator(data, context)
         return data
 
-    def to_primitive(self, data):
-        data = self.to_native(data)
+    def to_primitive(self, data, context=None):
+        data = self.to_native(data, context)
         if data is None:
             return None
         primitive_data = {}
         for field_name, field in self.fields.items():
-            serialize_when_none = self._meta.get('serialize_when_none', field.serialize_when_none)
+            serialize_when_none = get_value(context,
+                                            'serialize_when_none',
+                                            get_value(self._meta,
+                                                      'serialize_when_none',
+                                                      field.serialize_when_none))
             field_data = data.get(field_name, None)
             if field_data is None and not serialize_when_none:
                 continue
-            primitive_data[field_name] = field.to_primitive(field_data)
+            primitive_data[field_name] = field.to_primitive(field_data, context)
         return primitive_data
 
 
@@ -904,19 +912,19 @@ class ListSerializer(BaseSerializer):
             return value
         raise exceptions.InvalidUsage('{0}应是列表'.format(self.label))
 
-    def to_native(self, data):
+    def to_native(self, data, context=None):
         if data is None:
             return None
-        return [self.child.to_native(item) for item in self.ensure_sequence(data)]
+        return [self.child.to_native(item, context) for item in self.ensure_sequence(data)]
 
-    def to_primitive(self, data):
+    def to_primitive(self, data, context=None):
         data = self.to_native(data)
         if data is None:
             return None
-        return [self.child.to_primitive(item) for item in data]
+        return [self.child.to_primitive(item, context) for item in data]
 
-    def validate(self, data):
+    def validate(self, data, context=None):
         data = self.to_native(data)
         if data is None:
             return None
-        return [self.child.validate(item) for item in data]
+        return [self.child.validate(item, context) for item in data]
