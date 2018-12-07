@@ -1,41 +1,148 @@
 # -*- coding: utf-8 -*-
 import datetime
 import decimal
+import inspect
+import json
 import numbers
 import re
 import uuid
 from collections import Iterable, OrderedDict
+from typing import Sequence, Mapping
 
+import six
 from sanic import exceptions
 
 from . import datetime_helper
-from .undefined import Undefined
-from typing import Sequence, Mapping
 
 
-def loop_primitive(obj, spec):
+class Undefined:
+    """A type and singleton value (like None) to represent fields that
+    have not been initialized.
+    """
+    _instance = None
+
+    def __str__(self):
+        return 'Undefined'
+
+    def __repr__(self):
+        return 'Undefined'
+
+    def __eq__(self, other):
+        return self is other
+
+    def __ne__(self, other):
+        return self is not other
+
+    def __bool__(self):
+        return False
+
+    __nonzero__ = __bool__
+
+    def __lt__(self, other):
+        self._cmp_err(other, '<')
+
+    def __gt__(self, other):
+        self._cmp_err(other, '>')
+
+    def __le__(self, other):
+        self._cmp_err(other, '<=')
+
+    def __ge__(self, other):
+        self._cmp_err(other, '>=')
+
+    def _cmp_err(self, other, op):
+        raise TypeError("unorderable types: {0}() {1} {2}()".format(
+            self.__class__.__name__, op, other.__class__.__name__))
+
+    def __new__(cls, *args, **kwargs):
+        if cls._instance is None:
+            cls._instance = object.__new__(cls)
+        elif cls is not Undefined:
+            raise TypeError("type 'UndefinedType' is not an acceptable base type")
+        return cls._instance
+
+    def __init__(self):
+        pass
+
+    def __setattr__(self, name, value):
+        raise TypeError("'UndefinedType' object does not support attribute assignment")
+
+
+Undefined = Undefined()
+
+
+def instance_to_dict(instance):
+    """
+    Convert instance to dict
+    """
+    if not hasattr(instance, '__dict__'):
+        return None
+    data = {}
+    for k, v in instance.__dict__.items():
+        if k.startswith('__'):
+            continue
+        if k.startswith('_'):
+            continue
+        if callable(v):
+            continue
+        data[k] = v
+    return data
+
+
+def to_native(obj):
+    """Convert obj to a richer Python construct. The obj can be anything
+    """
     if obj is None:
         return None
-    if hasattr(obj, 'to_primitive') and callable(getattr(obj, 'to_primitive')):
-        return obj.to_primitive()
-    if isinstance(obj, (int, float, bool, str)):
+    if isinstance(obj, (int, float, bool, datetime.datetime, datetime.date, decimal.Decimal)):
         return obj
-    if isinstance(obj, datetime.datetime):
-        return datetime_helper.get_time_str(obj)
-    if isinstance(obj, datetime.date):
-        return datetime_helper.get_date_str(obj)
+    elif isinstance(obj, str):
+        value = datetime_helper.parse_datetime(obj)
+        if not value:
+            value = datetime_helper.parse_date(obj)
+        return value or obj
+
+    if hasattr(obj, 'to_native') and callable(obj.to_native) \
+            and len(inspect.signature(obj.to_native).parameters) == 1:
+        return obj.to_native()
+
+    if hasattr(obj, '__dict__'):
+        obj = instance_to_dict(obj)
+
     if isinstance(obj, Sequence):
-        return [to_primitive(e) for e in obj]
-    elif isinstance(obj, Mapping):
+        return [to_native(item) for item in obj]
+    if isinstance(obj, Mapping):
         return dict(
-            (k, to_primitive(v)) for k, v in obj.items()
+            (k, to_native(v)) for k, v in obj.items()
         )
-    return str(obj)
+    return obj
 
 
-def loop_native(value, spec):
-    pass
+def to_primitive(obj):
+    """Convert obj to a value safe to serialize.
+    """
+    if obj is None:
+        return None
+    if hasattr(obj, 'to_primitive') and callable(obj.to_primitive) \
+            and len(inspect.signature(obj.to_primitive).parameters) == 1:
+        return obj.to_primitive()
+    data = to_native(obj)
+    if isinstance(data, (int, float, bool, str)):
+        return data
+    if isinstance(data, datetime.datetime):
+        return datetime_helper.get_time_str(obj)
+    if isinstance(data, datetime.date):
+        return datetime_helper.get_date_str(obj)
+    if isinstance(data, Sequence):
+        return [to_primitive(e) for e in data]
+    elif isinstance(data, Mapping):
+        return dict(
+            (k, to_primitive(v)) for k, v in data.items()
+        )
+    return str(data)
 
+
+# ---------------------- Field -----------------------
 
 class FieldMeta(type):
     """
@@ -61,7 +168,7 @@ class FieldMeta(type):
 
         for attr_name, attr in attrs.items():
             if attr_name.startswith("validate_"):
-                validators[attr_name[9:]] = attr
+                validators[attr_name] = 1
 
         attrs["_validators"] = validators
 
@@ -114,6 +221,7 @@ class BaseField(metaclass=FieldMeta):
     def __init__(self, label, help_text=None, required=False,
                  default=Undefined, choices=None, validators=None,
                  serialize_when_none=True, messages=None):
+        assert not (required and default is not Undefined), 'May not set both `required` and `default`'
         super().__init__()
         if not label or not isinstance(label, str):
             raise ValueError('label must be a effective string')
@@ -125,7 +233,7 @@ class BaseField(metaclass=FieldMeta):
             raise TypeError('"choices" must be a non-string Iterable')
         self.choices = choices
 
-        self.validators = list(self._validators.values())
+        self.validators = [getattr(self, validator_name) for validator_name in self._validators]
         if validators:
             self.validators += list(validators)
         self.serialize_when_none = serialize_when_none
@@ -135,7 +243,10 @@ class BaseField(metaclass=FieldMeta):
         self.owner_model = None
 
     def __repr__(self):
-        type_ = "%s(%s) instance" % (self.__class__.__name__, self._repr_info() or '')
+        if self._repr_info():
+            type_ = "%s(%s) instance" % (self.__class__.__name__, self._repr_info())
+        else:
+            type_ = "%s instance" % (self.__class__.__name__)
         model = " on %s" % self.owner_model.__name__ if self.owner_model else ''
         field = " as '%s'" % self.name if self.name else ''
         return "<%s>" % (type_ + model + field)
@@ -157,27 +268,33 @@ class BaseField(metaclass=FieldMeta):
             default = default()
         return default
 
-    def pre_setattr(self, value):
-        return value
-
     def to_primitive(self, value):
         """Convert internal data to a value safe to serialize.
         """
-        return to_primitive(value)
+        native_data = self.to_native(value)
+        if native_data is None:
+            return None
+        if self.primitive_type is not None and not isinstance(native_data, self.primitive_type):
+            return self.primitive_type(native_data)
+        return native_data
+
+    def _to_native(self, value):
+        return value
 
     def to_native(self, value):
         """
         Convert untrusted data to a richer Python construct.
         """
+        value = self._to_native(value) if value is not None else None
+        if value is None and self._default is not Undefined:
+            value = self.default
         return value
 
     def validate(self, value):
-        value = self.to_native(value)
-
+        native_data = self.to_native(value)
         for validator in self.validators:
-            validator(value)
-
-        return value
+            validator(native_data)
+        return native_data
 
     def validate_required(self, value):
         if self.required and (value is None or value is Undefined):
@@ -199,7 +316,7 @@ class UUIDField(BaseField):
         'convert': "{0}的值{1}不能转为UUID",
     }
 
-    def to_native(self, value):
+    def _to_native(self, value):
         if not isinstance(value, uuid.UUID):
             try:
                 value = uuid.UUID(value)
@@ -226,7 +343,7 @@ class StringField(BaseField):
         self.min_length = min_length
         super().__init__(label, **kwargs)
 
-    def to_native(self, value):
+    def _to_native(self, value):
         if isinstance(value, str):
             return value
         if isinstance(value, bytes):
@@ -271,7 +388,7 @@ class NumberField(BaseField):
 
         super().__init__(label, **kwargs)
 
-    def to_native(self, value):
+    def _to_native(self, value):
         if isinstance(value, bool):
             value = int(value)
         if isinstance(value, self.native_type):
@@ -326,10 +443,7 @@ class DecimalField(NumberField):
     native_type = decimal.Decimal
     number_type = '定点小数'
 
-    def to_primitive(self, value):
-        return str(value)
-
-    def to_native(self, value):
+    def _to_native(self, value):
         if isinstance(value, decimal.Decimal):
             return value
 
@@ -358,7 +472,7 @@ class BooleanField(BaseField):
     TRUE_VALUES = ('True', 'true', '1')
     FALSE_VALUES = ('False', 'false', '0')
 
-    def to_native(self, value, context=None):
+    def _to_native(self, value):
         if isinstance(value, str):
             if value in self.TRUE_VALUES:
                 value = True
@@ -385,7 +499,7 @@ class DateField(BaseField):
         'parse': "{0}日期格式错误,有效格式是ISO8601日期格式(YYYY-MM-DD)"
     }
 
-    def to_native(self, value):
+    def _to_native(self, value):
         if isinstance(value, datetime.datetime):
             return value.date()
         if isinstance(value, datetime.date):
@@ -395,6 +509,10 @@ class DateField(BaseField):
             return datetime_helper.parse_date(value)
         except (ValueError, TypeError):
             raise exceptions.InvalidUsage(self.messages['parse'].format(self.label))
+
+    def to_primitive(self, value):
+        native_data = self.to_native(value)
+        return datetime_helper.get_date_str(native_data)
 
 
 class DateTimeField(BaseField):
@@ -408,13 +526,17 @@ class DateTimeField(BaseField):
         'parse': '{0}时间格式错误,有效格式是ISO8601时间格式',
     }
 
-    def to_native(self, value):
+    def _to_native(self, value):
         if isinstance(value, datetime.datetime):
             return datetime_helper.get_utc_time(value)
         try:
             return datetime_helper.parse_datetime(value)
         except (ValueError, TypeError):
             raise exceptions.InvalidUsage(self.messages['parse'].format(self.label))
+
+    def to_primitive(self, value):
+        native_data = self.to_native(value)
+        return datetime_helper.get_time_str(native_data)
 
 
 class TimestampField(BaseField):
@@ -425,7 +547,7 @@ class TimestampField(BaseField):
         'parse': '{0}时间戳有误',
     }
 
-    def to_native(self, value):
+    def _to_native(self, value):
         if isinstance(value, datetime.datetime):
             return datetime_helper.get_utc_time(value)
         try:
@@ -435,7 +557,8 @@ class TimestampField(BaseField):
             raise exceptions.InvalidUsage(self.messages['parse'].format(self.label))
 
     def to_primitive(self, value):
-        return value.timestamp()
+        native_data = self.to_native(value)
+        return native_data.timestamp()
 
 
 class EmailField(StringField):
@@ -490,30 +613,32 @@ class IDField(StringField):
             raise exceptions.InvalidUsage(self.messages['ID'].format(self.label, value))
 
 
-class ModelField(BaseField):
+class SerializerField(BaseField):
     """A field that can hold an instance of the specified model."""
     primitive_type = dict
+    native_type = dict
 
-    def __init__(self, label, model_spec, **kwargs):
-        self.model_spec = model_spec
+    def __init__(self, label, serializer, **kwargs):
+        assert 'default' not in kwargs, 'SerializerField cannot set default'
+        if not isinstance(serializer, Serializer):
+            raise TypeError('serializer must be instance of Serializer')
+        self.serializer = serializer
         super().__init__(label, **kwargs)
 
     def _repr_info(self):
-        return self.model_spec.__name__
+        return self.serializer.__class__.__name__
 
-    def pre_setattr(self, value):
-        if isinstance(value, self.model_spec):
-            return value
-        if isinstance(value, dict):
-            return self.model_spec(value)
-        raise exceptions.ServerError('{0}的值设置失败, 应是{1}或者字典类型'.format(self.label, self.model_spec.__name__))
+    def _to_native(self, value):
+        return self.serializer.to_native(value)
 
-    def to_native(self, value):
-        if isinstance(value, self.model_spec):
-            return value
-        if isinstance(value, dict):
-            return self.model_spec(value)
-        raise exceptions.ServerError('{0}的值应是{1}或者字典类型'.format(self.label, self.model_spec.__name__))
+    def validate(self, value):
+        value = self.serializer.validate(value) if value is not None else None
+        for validator in self.validators:
+            validator(value)
+        return value
+
+    def to_primitive(self, value):
+        return self.serializer.to_primitive(value) if value is not None else None
 
 
 class ListField(BaseField):
@@ -523,7 +648,7 @@ class ListField(BaseField):
     Use it like this::
 
         ...
-        categories = ListField('类别', StringType())
+        categories = ListField('类别', StringField('类别名称'))
     """
 
     primitive_type = list
@@ -551,7 +676,7 @@ class ListField(BaseField):
             return value
         raise exceptions.InvalidUsage('{0}应是列表'.format(self.label))
 
-    def to_native(self, value):
+    def _to_native(self, value):
         value = self._coerce(value)
         data = []
         for index, item in enumerate(value):
@@ -559,6 +684,34 @@ class ListField(BaseField):
                 data.append(self.field.to_native(item))
             except exceptions.SanicException as exc:
                 raise exceptions.InvalidUsage('{0}的第{1}值有误:{2}'.format(self.label, index, exc))
+        return data
+
+    def to_primitive(self, value):
+        if not value:
+            return None
+        value = self._coerce(value)
+        data = []
+        for index, item in enumerate(value):
+            try:
+                data.append(self.field.to_primitive(item))
+            except exceptions.SanicException as exc:
+                raise exceptions.InvalidUsage('{0}的第{1}值有误:{2}'.format(self.label, index, exc))
+        return data
+
+    def validate(self, value):
+        data = None
+        if value:
+            value = self._coerce(value)
+            data = []
+            for index, item in enumerate(value):
+                try:
+                    data.append(self.field.validate(item))
+                except exceptions.SanicException as exc:
+                    raise exceptions.InvalidUsage('{0}的第{1}个值有误:{2}'.format(self.label, index, exc))
+
+        for validator in self.validators:
+            validator(data)
+
         return data
 
     def validate_length(self, value):
@@ -571,14 +724,199 @@ class ListField(BaseField):
             raise exceptions.InvalidUsage('{0}最多包含{1}项'.format(self.label, self.max_size))
 
 
-class DictType(BaseField):
-    """A field for storing a mapping of items.
+class JsonField(BaseField):
+    """A field for json.
     """
 
-    primitive_type = dict
-    native_type = dict
+    primitive_type = None
+    native_type = None
 
     def to_native(self, value):
-        if not isinstance(value, Mapping):
-            raise exceptions.InvalidUsage('{0}应是字典类型'.format(self.label))
-        return dict(value)
+        try:
+            if isinstance(value, six.binary_type):
+                value = value.decode('utf-8')
+                return json.loads(value)
+            elif isinstance(value, str):
+                return json.loads(value)
+            else:
+                return to_native(value)
+        except (TypeError, ValueError):
+            raise exceptions.InvalidUsage('{0}的值不是有效的json格式')
+
+    def to_primitive(self, value):
+        to_primitive(value)
+
+
+# ---------------------- Serializer ------------------------
+
+class SerializerMeta(type):
+    """
+    Metaclass for Serializer. 
+    """
+
+    def __new__(mcs, name, bases, attrs):
+        """
+        Meta class for Serializer. Merges `fields`, `validators` and `meta`.
+        """
+
+        # Structures used to accumulate meta info
+        meta = OrderedDict()
+        fields = OrderedDict()
+        validators = OrderedDict()  # Model level
+        current_fields = OrderedDict()
+
+        # Accumulate info from parent classes
+        for base in reversed(bases):
+            # Copy parent fields
+            fields.update(getattr(base, '_fields', {}))
+
+            # Copy parent meta options
+            meta.update(getattr(base, '_meta', {}))
+
+            # Copy parent validators
+            validators.update(getattr(base, '_validators', {}))
+
+        for attr_name, attr in attrs.items():
+            if attr_name.startswith('validate_'):
+                validators[attr_name[9:]] = 1
+            if isinstance(attr, BaseField):
+                fields[attr_name] = attr
+                current_fields[attr_name] = attr
+            elif all([attr_name == 'Meta', inspect.isclass(attr)]):
+                meta.update(attr.__dict__)
+
+        attrs['_fields'] = fields
+        attrs['_validators'] = validators
+        attrs['_meta'] = meta
+
+        cls = type.__new__(mcs, name, bases, attrs)
+        # setup current model fields(field_name, owner_model)
+        for attr_name, attr in current_fields.items():
+            attr._setup(attr_name, cls)
+
+        return cls
+
+
+class BaseSerializer(metaclass=SerializerMeta):
+    """
+    Base class for Serializer
+    :param str label: Brief human-readable label
+    :param bool partial:
+        Allow partial data to validate. Essentially drops the ``required=True``
+        settings from field definitions. Default: False
+    :param dict fields:
+        KeyValuePair(field_name: str, field: BaseField), the `fields` and
+        serializer's declared fields will compose final `fields`.
+    :param validators:
+        A list of callables. Each callable receives the value after it has been
+        converted into a rich python type. Default: []
+    """
+
+    def __init__(self, label, partial=False, fields=None, validators=None):
+        if not label or not isinstance(label, str):
+            raise ValueError('label must be a effective string')
+        self.label = label
+        self.fields = OrderedDict(self._fields)
+        if fields:
+            for field_name, field in fields.items():
+                assert isinstance(field, BaseField), 'field must be instance of BaseField.'
+                field._setup(field_name, self.__class__)
+                self.fields[field_name] = field
+        self.validators = [getattr(self, validator_name) for validator_name in self._validators]
+        if validators:
+            self.validators += list(validators)
+        self.partial = partial
+
+    def to_native(self, data):
+        raise NotImplementedError
+
+    def to_primitive(self, data):
+        raise NotImplementedError
+
+    def validate(self, data):
+        raise NotImplementedError
+
+
+class Serializer(BaseSerializer):
+    def to_native(self, data):
+        if data is None:
+            return None
+        native_data = {}
+        for field_name, field in self.fields.items():
+            if isinstance(data, Mapping):
+                field_data = data.get(field_name, None)
+            elif hasattr(data, field_name):
+                field_data = getattr(data, field_name)
+            else:
+                raise TypeError('"{0}" object has no attribute "{1}"'.format(data.__class__.__name__,
+                                                                             field_name))
+            native_data[field_name] = field.to_native(field_data)
+        return native_data
+
+    def validate(self, data):
+        """
+        Validates the state of the model.
+        """
+        data = self.to_native(data)
+        if data is not None:
+            validate_data = {}
+            for field_name, field in self.fields.items():
+                field_data = data.get(field_name, None)
+                if field_data is None and self.partial:
+                    continue
+                validate_data[field_name] = field.validate(field_data)
+            data = validate_data
+
+        for validator in self.validators:
+            data = validator(self, data)
+        return data
+
+    def to_primitive(self, data):
+        data = self.to_native(data)
+        if data is None:
+            return None
+        primitive_data = {}
+        for field_name, field in self.fields.items():
+            serialize_when_none = self._meta.get('serialize_when_none', field.serialize_when_none)
+            field_data = data.get(field_name, None)
+            if field_data is None and not serialize_when_none:
+                continue
+            primitive_data[field_name] = field.to_primitive(field_data)
+        return primitive_data
+
+
+class ListSerializer(BaseSerializer):
+    def __init__(self, label, child, **kwargs):
+        if not isinstance(child, BaseSerializer):
+            raise TypeError('child must be instance of BaseSerializer')
+        self.child = child
+        super().__init__(label, **kwargs)
+        assert not self.fields, 'fields of ListSerializer should be empty'
+
+    def ensure_sequence(self, value):
+        if isinstance(value, list):
+            return value
+        elif isinstance(value, (str, Mapping)):  # unacceptable iterables
+            pass
+        elif isinstance(value, Sequence):
+            return value
+        elif isinstance(value, Iterable):
+            return value
+        raise exceptions.InvalidUsage('{0}应是列表'.format(self.label))
+
+    def to_native(self, data):
+        if data is None:
+            return None
+        return [self.child.to_native(item) for item in self.ensure_sequence(data)]
+
+    def to_primitive(self, data):
+        data = self.to_native(data)
+        if data is None:
+            return None
+        return [self.child.to_primitive(item) for item in data]
+
+    def validate(self, data):
+        data = self.to_native(data)
+        if data is None:
+            return None
+        return [self.child.validate(item) for item in data]
