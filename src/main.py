@@ -16,7 +16,7 @@ class User(Model):
 app = Sanic()
 bp = Blueprint("test_blueprints", url_prefix="/blueprint")
 
-
+bp.route()
 @describe(paths="/api/v1/user/", methods="POST")
 async def test_transmute(request, user: User):
     """

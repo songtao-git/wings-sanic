@@ -1,21 +1,28 @@
-from schema import serializers
+from sanic import Sanic, Blueprint
+from sanic.response import json
+from wings_sanic.decorators import route
 
 
-class Person:
-    def __init__(self, name, age=None, id=None):
-        self.id = id
-        self.name = name
-        self.age = age
+app = Sanic()
+
+@route(app, "/api/v1/user/", "POST")
+async def test_transmute(request):
+    """
+    API Description: Transmute Get. This will show in the swagger page (localhost:8000/api/v1/).
+    """
+    return {
+        "user": 'sss',
+    }
 
 
-class PersonSerializer(serializers.Serializer):
-    name = serializers.StringField('姓名')
-    age = serializers.IntField('年龄')
+@route(app, "/", method='get')
+# @app.route('/index/', methods=['GET'])
+async def index(request, *args, **kwargs):
+    """
+    API Description: Transmute Get. This will show in the swagger page (localhost:8000/api/v1/).
+    """
+    return json({'content': 'this is index'})
 
-    class Meta:
-        serialize_when_none = True
 
-if __name__ == '__main__':
-    p = Person('songtao')
-    person_s = PersonSerializer('人', fields={'id': serializers.IDField('身份证', required=True)})
-    print(person_s.validate(p, context={'serialize_when_none': True}))
+if __name__ == "__main__":
+    app.run(host='0.0.0.0', port=8080)

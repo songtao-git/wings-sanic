@@ -183,7 +183,7 @@ class FieldMeta(type):
 
 class BaseField(metaclass=FieldMeta):
     """A base class for Fields in a Model. Instances of this
-    class may be added to subclasses of ``Model`` to define a model schema.
+    class may be added to subclasses of ``Model`` to define a model wings_sanic.
 
     Validators that need to access variables on the instance
     can be defined be implementing methods whose names start with ``validate_``
@@ -689,7 +689,7 @@ class ListField(BaseField):
             try:
                 data.append(self.field.to_native(item, context))
             except exceptions.SanicException as exc:
-                raise exceptions.InvalidUsage('{0}的第{1}值有误:{2}'.format(self.label, index, exc))
+                raise exceptions.InvalidUsage('{0}的第{1}值有误:{2}'.format(self.label, index + 1, exc))
         return data
 
     def to_primitive(self, value, context=None):
@@ -927,4 +927,13 @@ class ListSerializer(BaseSerializer):
         data = self.to_native(data)
         if data is None:
             return None
-        return [self.child.validate(item, context) for item in data]
+        validated_data = []
+        for index, item in enumerate(data):
+            try:
+                validated_data.append(self.child.validate(item, context))
+            except exceptions.SanicException as exc:
+                raise exceptions.InvalidUsage('{0}的第{1}个值有误:{2}'.format(self.label, index + 1, exc))
+
+        for validator in self.validators:
+            validated_data = validator(validated_data, context)
+        return validated_data
