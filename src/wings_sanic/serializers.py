@@ -861,15 +861,15 @@ class Serializer(BaseSerializer):
         """
 
         partial = get_value(context, 'partial', False)
-        data = self.to_native(data, context)
-        if data is not None:
-            validate_data = {}
-            for field_name, field in self.fields.items():
-                field_data = data.get(field_name, None)
-                if field_data is None and partial:
-                    continue
-                validate_data[field_name] = field.validate(field_data, context)
-            data = validate_data
+        data = self.to_native(data, context) or {}
+
+        validate_data = {}
+        for field_name, field in self.fields.items():
+            field_data = data.get(field_name, None)
+            if field_data is None and partial:
+                continue
+            validate_data[field_name] = field.validate(field_data, context)
+        data = validate_data
 
         for validator in self.validators:
             data = validator(data, context)
