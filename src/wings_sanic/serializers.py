@@ -196,7 +196,7 @@ class BaseField(metaclass=FieldMeta):
         documentation, etc.
     :param required:
         Invalidate field when value is None or is not supplied. 
-        Default: False.
+        Default: True.
     :param default:
         When no data is provided default to this value. May be a callable.
         Default: Undefined.
@@ -224,7 +224,7 @@ class BaseField(metaclass=FieldMeta):
         'choices': "{0}是{1}其中之一.",
     }
 
-    def __init__(self, label, help_text=None, required=False,
+    def __init__(self, label, help_text=None, required=True,
                  default=Undefined, choices=None, validators=None,
                  serialize_when_none=True, messages=None):
         assert not (required and default is not Undefined), 'May not set both `required` and `default`'
@@ -784,7 +784,7 @@ class SerializerMeta(type):
 
         for attr_name, attr in attrs.items():
             if attr_name.startswith('validate_'):
-                validators[attr_name[9:]] = 1
+                validators[attr_name] = 1
             if isinstance(attr, BaseField):
                 fields[attr_name] = attr
                 current_fields[attr_name] = attr
@@ -815,10 +815,11 @@ class BaseSerializer(metaclass=SerializerMeta):
         converted into a rich python type. Default: []
     """
 
-    def __init__(self, label, fields=None, validators=None):
+    def __init__(self, label, fields=None, validators=None, null=False):
         if not label or not isinstance(label, str):
             raise ValueError('label must be a effective string')
         self.label = label
+        self.null = null
         self.fields = OrderedDict(self._fields)
         if fields:
             for field_name, field in fields.items():
@@ -838,10 +839,14 @@ class BaseSerializer(metaclass=SerializerMeta):
     def validate(self, data, context=None):
         raise NotImplementedError
 
+    def validate_null(self, data, context=None):
+        if not self.null and (data is None or data is Undefined):
+            raise exceptions.InvalidUsage('{0}不能为空'.format(self.label))
+
 
 class Serializer(BaseSerializer):
     def to_native(self, data, context=None):
-        if data is None:
+        if data is None or data is Undefined:
             return None
         native_data = {}
         for field_name, field in self.fields.items():
@@ -861,15 +866,16 @@ class Serializer(BaseSerializer):
         """
 
         partial = get_value(context, 'partial', False)
-        data = self.to_native(data, context) or {}
+        data = self.to_native(data, context)
 
-        validate_data = {}
-        for field_name, field in self.fields.items():
-            field_data = data.get(field_name, None)
-            if field_data is None and partial:
-                continue
-            validate_data[field_name] = field.validate(field_data, context)
-        data = validate_data
+        if data is not None:
+            validate_data = {}
+            for field_name, field in self.fields.items():
+                field_data = data.get(field_name, None)
+                if field_data is None and partial:
+                    continue
+                validate_data[field_name] = field.validate(field_data, context)
+            data = validate_data
 
         for validator in self.validators:
             data = validator(data, context)
@@ -913,7 +919,7 @@ class ListSerializer(BaseSerializer):
         raise exceptions.InvalidUsage('{0}应是列表'.format(self.label))
 
     def to_native(self, data, context=None):
-        if data is None:
+        if data is None or data is Undefined:
             return None
         return [self.child.to_native(item, context) for item in self.ensure_sequence(data)]
 
@@ -925,15 +931,15 @@ class ListSerializer(BaseSerializer):
 
     def validate(self, data, context=None):
         data = self.to_native(data)
-        if data is None:
-            return None
-        validated_data = []
-        for index, item in enumerate(data):
-            try:
-                validated_data.append(self.child.validate(item, context))
-            except exceptions.SanicException as exc:
-                raise exceptions.InvalidUsage('{0}的第{1}个值有误:{2}'.format(self.label, index + 1, exc))
+        if data is not None:
+            validated_data = []
+            for index, item in enumerate(data):
+                try:
+                    validated_data.append(self.child.validate(item, context))
+                except exceptions.SanicException as exc:
+                    raise exceptions.InvalidUsage('{0}的第{1}个值有误:{2}'.format(self.label, index + 1, exc))
+            data = validated_data
 
         for validator in self.validators:
-            validated_data = validator(validated_data, context)
-        return validated_data
+            data = validator(data, context)
+        return data
