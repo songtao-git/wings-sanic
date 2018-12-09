@@ -1,9 +1,15 @@
 # -*- coding: utf-8 -*-
 from functools import wraps
 
-from sanic.response import HTTPResponse
+from sanic.response import BaseHTTPResponse, json
 
+from . import serializers
+from .metadata import HandlerMetaData
 from .serializers import BaseSerializer
+from .response_shape import ResponseShape
+from .config import DEFAULT_CONTEXT
+
+__all__ = ['route']
 
 
 def route(app_or_blueprint,
@@ -12,13 +18,12 @@ def route(app_or_blueprint,
           success_code=200,
           host=None,
           strict_slashes=None,
-          stream=False,
           version=None,
           name=None,
-          query_serializer: BaseSerializer = None,
+          header_params: BaseSerializer = None,
+          path_params: BaseSerializer = None,
+          query_params: BaseSerializer = None,
           body_serializer: BaseSerializer = None,
-          header_serializer: BaseSerializer = None,
-          path_serializer: BaseSerializer = None,
           response_serializer: BaseSerializer = None,
           tags: list = None,
           context: dict = None):
@@ -32,8 +37,6 @@ def route(app_or_blueprint,
 
     :param strict_slashes:
 
-    :param stream:
-
     :param version:
 
     :param name:
@@ -42,17 +45,17 @@ def route(app_or_blueprint,
 
     :param success_code:
 
-    :param query_serializer: the arguments that should be query parameters.
+    :param header_params: the arguments that should be passed into the header.
+
+    :param path_params: the arguments that are specified by the path. By default, arguments
+           that are found in the path are used first before the query_parameters and body_parameters.
+
+    :param query_params: the arguments that should be query parameters.
            By default, all arguments are query_or path parameters for a GET request.
 
     :param body_serializer: the arguments that should be body parameters.
            By default, all arguments are either body or path parameters for a non-GET request.
            the whole body is validated against a single object.
-
-    :param header_serializer: the arguments that should be passed into the header.
-
-    :param path_serializer: the arguments that are specified by the path. By default, arguments
-           that are found in the path are used first before the query_parameters and body_parameters.
 
     :param response_serializer: response spec
 
@@ -61,15 +64,16 @@ def route(app_or_blueprint,
     :param context: maybe contains 'response_shape' to custom final response format.
     """
     method = method.upper()
+    context = context or DEFAULT_CONTEXT
 
     metadata = HandlerMetaData(path=path,
                                method=method,
                                tags=tags,
                                success_code=success_code,
-                               query_serializer=query_serializer,
+                               header_params=header_params,
+                               path_params=path_params,
+                               query_params=query_params,
                                body_serializer=body_serializer,
-                               header_serializer=header_serializer,
-                               path_serializer=path_serializer,
                                response_serializer=response_serializer,
                                context=context)
 
@@ -83,64 +87,60 @@ def route(app_or_blueprint,
                 result = await raw_handler(request, **kwargs)
             except Exception as e:
                 exc = e
-            content_type = request.headers.get("Content-Type", "application/json")
-            response = process_result(
-                metadata, result, exc, content_type
-            )
+            response = await process_result(result, metadata, exc)
             return response
 
-        handler.meta_data = metadata
+        handler.metadata = metadata
 
         app_or_blueprint.add_route(handler=handler, uri=path, methods=[method], host=host,
                                    strict_slashes=strict_slashes, version=version,
-                                   name=name, stream=stream)
+                                   name=name)
 
         return handler
 
     return decorator
 
 
-class HandlerMetaData:
-    def __init__(
-            self,
-            path,
-            method,
-            tags=None,
-            query_serializer=None,
-            body_serializer=None,
-            header_serializer=None,
-            path_serializer=None,
-            response_serializer=None,
-            success_code=200,
-            context=None,
-    ):
-        self.path = path
-        self.method = method
-        self.tags = set(tags or [])
-        self.success_code = success_code
-        self.query_serializer = query_serializer
-        self.body_serializer = body_serializer
-        self.header_serializer = header_serializer
-        self.path_serializer = path_serializer
-        self.response_serializer = response_serializer
-        self.context = context
-
-
 async def extract_params(request, metadata):
-    body_params = metadata.body_serializer.validate(request.json) if metadata.body_serializer else request.json
-    query_params = metadata.query_serializer.validate(request.json) if metadata.query_serializer else request.json
-    header_params = metadata.header_serializer.validate(request.json) if metadata.header_serializer else request.json
-    path_params = metadata.path_serializer.validate(request.json) if metadata.path_serializer else request.json
-
-    return {
-        'body': body_params,
-        'query': query_params,
-        'header': header_params,
-        'path': path_params
+    params = {
+        'header': None,
+        'query': None,
+        'path': None,
+        'body': None
     }
+    # header
+    if metadata.header_serializer:
+        params['header'] = metadata.header_serializer.validate(request.headers, metadata.context)
+        params.update(params['header'])
+
+    # query
+    if metadata.query_serializer:
+        query_data = {}
+        # only field declared in `query_params` is effective.
+        for f_n, f in metadata.query_serializer.fields.items():
+            if f_n in request.args:
+                if isinstance(f, serializers.ListField):
+                    query_data[f_n] = set()
+                    for i in request.args[f_n]:
+                        query_data[f_n].update(i.split(','))  # match `?a=b,c,d&a=d`
+                else:
+                    query_data[f_n] = request.args[f_n][0]
+        params['query'] = metadata.query_serializer.validate(query_data, metadata.context)
+        params.update(params['query'])
+
+    # path
+    if metadata.path_serializer:
+        params['path'] = metadata.path_serializer.validate(request.match_info, metadata.context)
+        params.update(params['path'])
+
+    # body
+    if metadata.body_serializer:
+        params['body'] = metadata.body_serializer.validate(request.json, metadata.context)
+
+    return params
 
 
-def process_result(metadata, result, exc, content_type):
+async def process_result(result, metadata, exc):
     """
     process a result:
 
@@ -151,50 +151,22 @@ def process_result(metadata, result, exc, content_type):
     result: the return value of the function, which will be serialized and
             returned back in the API.
 
-    exc: the exception object. For Python 2, the traceback should
-         be attached via the __traceback__ attribute. This is done automatically
-         in Python 3.
-
-    content_type: the content type that request is requesting for a return type.
-                  (e.g. application/json)
+    exc: the exception object.
     """
-    # if isinstance(result, Response):
-    #     response = result
-    # else:
-    #     response = Response(
-    #         result=result, code=transmute_func.success_code, success=True
-    #     )
-    # if exc:
-    #     if isinstance(exc, APIException):
-    #         response.result = "invalid api use: {0}".format(str(exc))
-    #         response.success = False
-    #         response.code = exc.code
-    #     else:
-    #         reraise(type(exc), exc, getattr(exc, "__traceback__", None))
-    # else:
-    #     return_type = transmute_func.get_response_by_code(response.code)
-    #     if return_type:
-    #         response.result = context.serializers.dump(return_type, response.result)
-    # try:
-    #     content_type = str(content_type)
-    #     serializer = context.contenttype_serializers[content_type]
-    # except NoSerializerFound:
-    #     serializer = context.contenttype_serializers.default
-    #     content_type = serializer.main_type
-    # # if response.success:
-    # #     result = context.response_shape.create_body(attr.asdict(response))
-    # #     response.result = result
-    # else:
-    #     response.result = attr.asdict(response)
-    # body = serializer.dump(response.result)
-    # # keeping the return type a dict to
-    # # reduce performance overhead.
-    # return {
-    #     "body": body,
-    #     "code": response.code,
-    #     "content-type": content_type,
-    #     "headers": response.headers,
-    # }
-    if exc:
-        raise exc
-    return result
+
+    if isinstance(result, BaseHTTPResponse):
+        return result
+
+    if not exc:
+        if metadata.response_serializer:
+            result = metadata.response_serializer.to_primitive(result, metadata.context)
+        else:
+            result = serializers.to_primitive(result)
+
+    response_shape = serializers.get_value(metadata.context, 'response_shape', ResponseShape)
+    if not issubclass(response_shape, ResponseShape):
+        response_shape = ResponseShape
+
+    result, code = response_shape.create_body(result, metadata.success_code, exc)
+
+    return json(body=result, status=code)

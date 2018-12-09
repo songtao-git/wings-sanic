@@ -3,30 +3,32 @@ from sanic.response import json
 
 from wings_sanic import serializers
 from wings_sanic.decorators import route
-
+from wings_sanic.response_shape import ResponseShapeCodeDataMsg
+from wings_sanic import config
 
 app = Sanic()
 
-@route(app, "/api/v1/user/", "POST")
-async def test_transmute(request):
+bp = Blueprint('test', url_prefix='/v1')
+
+
+@route(bp,
+       method='get',
+       path="/<age>/",
+       path_params={
+           'age': serializers.IntField('年龄')
+       },
+       query_params={
+           'id': serializers.StringField('身份证'),
+       })
+async def index(request, age, *args, **kwargs):
     """
     API Description: Transmute Get. This will show in the swagger page (localhost:8000/api/v1/).
     """
-    return {
-        "user": 'sss',
-    }
+    return {'content': 'this is index', 'name': '', 'age': age}
+    # return json({'content': 'this is index', 'name': age})
 
-
-@route(app, "/", method='get', query_serializer=serializers.Serializer('查询参数', fields={
-    'name': serializers.StringField('姓名', required=True)
-}))
-# @app.route('/', methods=['GET'])
-async def index(request, *args, **kwargs):
-    """
-    API Description: Transmute Get. This will show in the swagger page (localhost:8000/api/v1/).
-    """
-    return json({'content': 'this is index'})
-
+app.blueprint(bp)
 
 if __name__ == "__main__":
+    config.DEFAULT_CONTEXT['response_shape'] = ResponseShapeCodeDataMsg
     app.run(host='0.0.0.0', port=8080)

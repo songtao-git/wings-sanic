@@ -196,7 +196,7 @@ class BaseField(metaclass=FieldMeta):
         documentation, etc.
     :param required:
         Invalidate field when value is None or is not supplied. 
-        Default: True.
+        Default: False.
     :param default:
         When no data is provided default to this value. May be a callable.
         Default: Undefined.
@@ -224,7 +224,7 @@ class BaseField(metaclass=FieldMeta):
         'choices': "{0}是{1}其中之一.",
     }
 
-    def __init__(self, label, help_text=None, required=True,
+    def __init__(self, label, help_text=None, required=False,
                  default=Undefined, choices=None, validators=None,
                  serialize_when_none=True, messages=None):
         assert not (required and default is not Undefined), 'May not set both `required` and `default`'
@@ -232,6 +232,7 @@ class BaseField(metaclass=FieldMeta):
         if not label or not isinstance(label, str):
             raise ValueError('label must be a effective string')
         self.label = label
+        self.label_sequence = [label]
         self.help_text = help_text
         self.required = required
         self._default = default
@@ -246,26 +247,28 @@ class BaseField(metaclass=FieldMeta):
         self.messages = dict(self.MESSAGES, **(messages or {}))
 
         self.name = None
-        self.owner_model = None
+        self.owner_serializer = None
 
     def __repr__(self):
         if self._repr_info():
             type_ = "%s(%s) instance" % (self.__class__.__name__, self._repr_info())
         else:
             type_ = "%s instance" % (self.__class__.__name__)
-        model = " on %s" % self.owner_model.__name__ if self.owner_model else ''
+        model = " on %s" % self.owner_serializer.__class__.__name__ if self.owner_serializer else ''
         field = " as '%s'" % self.name if self.name else ''
         return "<%s>" % (type_ + model + field)
 
     def _repr_info(self):
         return None
 
-    def _setup(self, field_name, owner_model):
+    def _setup(self, field_name, owner_serializer):
         """Perform late-stage setup tasks that are run after the containing model
         has been created.
         """
         self.name = field_name
-        self.owner_model = owner_model
+        assert isinstance(owner_serializer, BaseSerializer), 'owner_model should be instance of BaseSerializer'
+        self.owner_serializer = owner_serializer
+        self.label_sequence = get_value(owner_serializer, 'label_sequence', []) + self.label_sequence
 
     @property
     def default(self):
@@ -273,6 +276,10 @@ class BaseField(metaclass=FieldMeta):
         if callable(default):
             default = default()
         return default
+
+    @property
+    def full_label(self):
+        return ':'.join(self.label_sequence)
 
     def to_primitive(self, value, context=None):
         """Convert internal data to a value safe to serialize.
@@ -299,6 +306,9 @@ class BaseField(metaclass=FieldMeta):
     def validate(self, value, context=None):
         native_data = self.to_native(value, context)
         for validator in self.validators:
+            if (native_data is None or native_data is Undefined) \
+                    and validator != self.validate_required:
+                continue
             validator(native_data, context)
         return native_data
 
@@ -309,7 +319,7 @@ class BaseField(metaclass=FieldMeta):
     def validate_choices(self, value, context=None):
         if self.choices is not None:
             if value not in self.choices:
-                raise exceptions.InvalidUsage(self.messages['choices'].format(self.label, self.choices))
+                raise exceptions.InvalidUsage(self.messages['choices'].format(self.full_label, self.choices))
 
 
 class UUIDField(BaseField):
@@ -327,7 +337,7 @@ class UUIDField(BaseField):
             try:
                 value = uuid.UUID(value)
             except (TypeError, ValueError):
-                raise exceptions.InvalidUsage(self.messages['convert'].format(self.label, value))
+                raise exceptions.InvalidUsage(self.messages['convert'].format(self.full_label, value))
         return value
 
 
@@ -356,20 +366,20 @@ class StringField(BaseField):
             try:
                 return str(value, 'utf-8')
             except UnicodeError:
-                raise exceptions.InvalidUsage(self.messages['decode'].format(self.label))
+                raise exceptions.InvalidUsage(self.messages['decode'].format(self.full_label))
         return str(value)
 
     def validate_length(self, value, context=None):
         length = len(value)
         if self.max_length is not None and length > self.max_length:
-            raise exceptions.InvalidUsage(self.messages['max_length'].format(self.label, self.max_length))
+            raise exceptions.InvalidUsage(self.messages['max_length'].format(self.full_label, self.max_length))
 
         if self.min_length is not None and length < self.min_length:
-            raise exceptions.InvalidUsage(self.messages['min_length'].format(self.label, self.min_length))
+            raise exceptions.InvalidUsage(self.messages['min_length'].format(self.full_label, self.min_length))
 
     def validate_regex(self, value, context=None):
         if self.regex is not None and self.regex.match(value) is None:
-            raise exceptions.InvalidUsage(self.messages['regex'].format(self.label))
+            raise exceptions.InvalidUsage(self.messages['regex'].format(self.full_label))
 
 
 class NumberField(BaseField):
@@ -411,14 +421,14 @@ class NumberField(BaseField):
             if isinstance(value, (str, numbers.Integral)):
                 return native_value
 
-        raise exceptions.InvalidUsage(self.messages['number_coerce'].format(self.label, value, self.number_type))
+        raise exceptions.InvalidUsage(self.messages['number_coerce'].format(self.full_label, value, self.number_type))
 
     def validate_range(self, value, context=None):
         if self.min_value is not None and value < self.min_value:
-            raise exceptions.InvalidUsage(self.messages['number_min'].format(self.label, self.min_value))
+            raise exceptions.InvalidUsage(self.messages['number_min'].format(self.full_label, self.min_value))
 
         if self.max_value is not None and value > self.max_value:
-            raise exceptions.InvalidUsage(self.messages['number_max'].format(self.label, self.max_value))
+            raise exceptions.InvalidUsage(self.messages['number_max'].format(self.full_label, self.max_value))
 
         return value
 
@@ -458,7 +468,7 @@ class DecimalField(NumberField):
         try:
             value = decimal.Decimal(value)
         except (TypeError, decimal.InvalidOperation):
-            raise exceptions.InvalidUsage(self.messages['number_coerce'].format(self.label, value, self.number_type))
+            raise exceptions.InvalidUsage(self.messages['number_coerce'].format(self.full_label, value, self.number_type))
 
         return value
 
@@ -489,7 +499,7 @@ class BooleanField(BaseField):
             value = bool(value)
 
         if not isinstance(value, bool):
-            raise exceptions.InvalidUsage("{0}的值应是布尔值true或者false".format(self.label))
+            raise exceptions.InvalidUsage("{0}的值应是布尔值true或者false".format(self.full_label))
 
         return value
 
@@ -514,7 +524,7 @@ class DateField(BaseField):
         try:
             return datetime_helper.parse_date(value)
         except (ValueError, TypeError):
-            raise exceptions.InvalidUsage(self.messages['parse'].format(self.label))
+            raise exceptions.InvalidUsage(self.messages['parse'].format(self.full_label))
 
     def to_primitive(self, value, context=None):
         native_data = self.to_native(value)
@@ -538,7 +548,7 @@ class DateTimeField(BaseField):
         try:
             return datetime_helper.parse_datetime(value)
         except (ValueError, TypeError):
-            raise exceptions.InvalidUsage(self.messages['parse'].format(self.label))
+            raise exceptions.InvalidUsage(self.messages['parse'].format(self.full_label))
 
     def to_primitive(self, value, context=None):
         native_data = self.to_native(value, context)
@@ -560,7 +570,7 @@ class TimestampField(BaseField):
             t = float(value)
             return datetime_helper.from_timestamp(t)
         except (ValueError, TypeError):
-            raise exceptions.InvalidUsage(self.messages['parse'].format(self.label))
+            raise exceptions.InvalidUsage(self.messages['parse'].format(self.full_label))
 
     def to_primitive(self, value, context=None):
         native_data = self.to_native(value, context)
@@ -586,7 +596,7 @@ class EmailField(StringField):
 
     def validate_email(self, value, context=None):
         if not EmailField.EMAIL_REGEX.match(value):
-            raise exceptions.InvalidUsage(self.messages['email'].format(self.label, value))
+            raise exceptions.InvalidUsage(self.messages['email'].format(self.full_label, value))
 
 
 class PhoneField(StringField):
@@ -601,7 +611,7 @@ class PhoneField(StringField):
 
     def validate_phone(self, value, context=None):
         if not PhoneField.PHONE_REGEX.match(value):
-            raise exceptions.InvalidUsage(self.messages['phone'].format(self.label, value))
+            raise exceptions.InvalidUsage(self.messages['phone'].format(self.full_label, value))
 
 
 class IDField(StringField):
@@ -616,7 +626,7 @@ class IDField(StringField):
 
     def validate_ID(self, value, context=None):
         if not IDField.ID_REGEX.match(value):
-            raise exceptions.InvalidUsage(self.messages['ID'].format(self.label, value))
+            raise exceptions.InvalidUsage(self.messages['ID'].format(self.full_label, value))
 
 
 class SerializerField(BaseField):
@@ -628,6 +638,7 @@ class SerializerField(BaseField):
         assert 'default' not in kwargs, 'SerializerField cannot set default'
         if not isinstance(serializer, Serializer):
             raise TypeError('serializer must be instance of Serializer')
+        serializer._setup(self)
         self.serializer = serializer
         super().__init__(label, **kwargs)
 
@@ -680,7 +691,7 @@ class ListField(BaseField):
             return value
         elif isinstance(value, Iterable):
             return value
-        raise exceptions.InvalidUsage('{0}应是列表'.format(self.label))
+        raise exceptions.InvalidUsage('{0}应是列表'.format(self.full_label))
 
     def _to_native(self, value, context=None):
         value = self._coerce(value)
@@ -689,7 +700,7 @@ class ListField(BaseField):
             try:
                 data.append(self.field.to_native(item, context))
             except exceptions.SanicException as exc:
-                raise exceptions.InvalidUsage('{0}的第{1}值有误:{2}'.format(self.label, index + 1, exc))
+                raise exceptions.InvalidUsage('{0}的第{1}值有误:{2}'.format(self.full_label, index + 1, exc))
         return data
 
     def to_primitive(self, value, context=None):
@@ -701,7 +712,7 @@ class ListField(BaseField):
             try:
                 data.append(self.field.to_primitive(item, context))
             except exceptions.SanicException as exc:
-                raise exceptions.InvalidUsage('{0}的第{1}值有误:{2}'.format(self.label, index, exc))
+                raise exceptions.InvalidUsage('{0}的第{1}值有误:{2}'.format(self.full_label, index, exc))
         return data
 
     def validate(self, value, context=None):
@@ -713,7 +724,7 @@ class ListField(BaseField):
                 try:
                     data.append(self.field.validate(item, context))
                 except exceptions.SanicException as exc:
-                    raise exceptions.InvalidUsage('{0}的第{1}个值有误:{2}'.format(self.label, index, exc))
+                    raise exceptions.InvalidUsage('{0}的第{1}个值有误:{2}'.format(self.full_label, index, exc))
 
         for validator in self.validators:
             validator(data, context)
@@ -724,10 +735,10 @@ class ListField(BaseField):
         list_length = len(value) if value else 0
 
         if self.min_size is not None and list_length < self.min_size:
-            raise exceptions.InvalidUsage('{0}最少包含{1}项'.format(self.label, self.min_size))
+            raise exceptions.InvalidUsage('{0}最少包含{1}项'.format(self.full_label, self.min_size))
 
         if self.max_size is not None and list_length > self.max_size:
-            raise exceptions.InvalidUsage('{0}最多包含{1}项'.format(self.label, self.max_size))
+            raise exceptions.InvalidUsage('{0}最多包含{1}项'.format(self.full_label, self.max_size))
 
 
 class JsonField(BaseField):
@@ -806,7 +817,6 @@ class SerializerMeta(type):
 class BaseSerializer(metaclass=SerializerMeta):
     """
     Base class for Serializer
-    :param str label: Brief human-readable label
     :param dict fields:
         KeyValuePair(field_name: str, field: BaseField), the `fields` and
         serializer's declared fields will compose final `fields`.
@@ -815,20 +825,28 @@ class BaseSerializer(metaclass=SerializerMeta):
         converted into a rich python type. Default: []
     """
 
-    def __init__(self, label, fields=None, validators=None, null=False):
-        if not label or not isinstance(label, str):
-            raise ValueError('label must be a effective string')
-        self.label = label
-        self.null = null
+    def __init__(self, fields=None, validators=None):
         self.fields = OrderedDict(self._fields)
         if fields:
             for field_name, field in fields.items():
                 assert isinstance(field, BaseField), 'field must be instance of BaseField.'
-                field._setup(field_name, self.__class__)
+                field._setup(field_name, self)
                 self.fields[field_name] = field
         self.validators = [getattr(self, validator_name) for validator_name in self._validators]
         if validators:
             self.validators += list(validators)
+
+        self.parent_field = None
+        self.label_sequence = []
+
+    @property
+    def full_label(self):
+        return ':'.join(self.label_sequence)
+
+    def _setup(self, parent_field):
+        assert isinstance(parent_field, BaseField), 'parent_field should be instance of BaseField'
+        self.parent_field = parent_field
+        self.label_sequence = get_value(parent_field, 'label_sequence', []) + self.label_sequence
 
     def to_native(self, data, context=None):
         raise NotImplementedError
@@ -838,10 +856,6 @@ class BaseSerializer(metaclass=SerializerMeta):
 
     def validate(self, data, context=None):
         raise NotImplementedError
-
-    def validate_null(self, data, context=None):
-        if not self.null and (data is None or data is Undefined):
-            raise exceptions.InvalidUsage('{0}不能为空'.format(self.label))
 
 
 class Serializer(BaseSerializer):
@@ -916,7 +930,7 @@ class ListSerializer(BaseSerializer):
             return value
         elif isinstance(value, Iterable):
             return value
-        raise exceptions.InvalidUsage('{0}应是列表'.format(self.label))
+        raise exceptions.InvalidUsage('{0}应是列表'.format(self.full_label))
 
     def to_native(self, data, context=None):
         if data is None or data is Undefined:
@@ -937,7 +951,7 @@ class ListSerializer(BaseSerializer):
                 try:
                     validated_data.append(self.child.validate(item, context))
                 except exceptions.SanicException as exc:
-                    raise exceptions.InvalidUsage('{0}的第{1}个值有误:{2}'.format(self.label, index + 1, exc))
+                    raise exceptions.InvalidUsage('{0}第{1}个值有误:{2}'.format(self.full_label, index + 1, exc))
             data = validated_data
 
         for validator in self.validators:
