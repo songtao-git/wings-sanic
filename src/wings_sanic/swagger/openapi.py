@@ -15,11 +15,12 @@ blueprint = Blueprint('swagger', url_prefix='swagger')
 _spec = {}
 
 
-def __summary(description):
-    for s in description.splitlines():
-        if s != "":
-            return s
-    return ""
+def __summary_description(doc_string):
+    doc_string = (doc_string or "").strip()
+    s = doc_string.split('\n', 1)
+    if len(s) == 1:
+        s.append("")
+    return s[0].strip(), s[1].strip()
 
 
 @blueprint.listener('before_server_start')
@@ -85,10 +86,12 @@ def build_spec(app, loop):
                 response_shape = get_response_shape(metadata.context)
                 response_spec = response_shape.swagger(response_spec)
 
+            summary, description = __summary_description(inspect.cleandoc(_handler.__doc__ or ""))
+
             endpoint = {
                 'operationId': utils.meth_str(_handler),
-                'summary': "",
-                'description': inspect.cleandoc(_handler.__doc__ or ""),
+                'summary': summary,
+                'description': description,
                 'consumes': ['application/json'],
                 'produces': ['application/json'],
                 'tags': metadata.tags,
@@ -101,7 +104,6 @@ def build_spec(app, loop):
                     }
                 },
             }
-            endpoint['summary'] = __summary(endpoint['description'])
 
             methods[_method.lower()] = endpoint
 

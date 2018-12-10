@@ -17,7 +17,7 @@ bp = WingsBluePrint('test', url_prefix='/v1')
         })
 async def index(request, age, *args, **kwargs):
     """
-    API Description: Transmute Get. This will show in the swagger page (localhost:8000/api/v1/).
+    接口名
     """
     return {'content': 'this is index', 'name': '', 'age': age}
 
