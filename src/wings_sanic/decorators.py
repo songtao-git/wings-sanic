@@ -6,8 +6,9 @@ from sanic.response import BaseHTTPResponse, json
 from . import serializers
 from .metadata import HandlerMetaData
 from .serializers import BaseSerializer
-from .response_shape import ResponseShape
-from .config import DEFAULT_CONTEXT
+from .views import ResponseShape
+from . import settings, utils
+import copy
 
 __all__ = ['route']
 
@@ -64,7 +65,6 @@ def route(app_or_blueprint,
     :param context: maybe contains 'response_shape' to custom final response format.
     """
     method = method.upper()
-    context = context or DEFAULT_CONTEXT
 
     metadata = HandlerMetaData(path=path,
                                method=method,
@@ -81,13 +81,9 @@ def route(app_or_blueprint,
 
         @wraps(raw_handler)
         async def handler(request, *args, **kwargs):
-            exc, result = None, None
-            try:
-                kwargs = await extract_params(request, metadata)
-                result = await raw_handler(request, **kwargs)
-            except Exception as e:
-                exc = e
-            response = await process_result(result, metadata, exc)
+            kwargs = await extract_params(request, metadata)
+            result = await raw_handler(request, **kwargs)
+            response = await process_result(result, metadata)
             return response
 
         handler.metadata = metadata
@@ -140,7 +136,7 @@ async def extract_params(request, metadata):
     return params
 
 
-async def process_result(result, metadata, exc):
+async def process_result(result, metadata):
     """
     process a result:
 
@@ -150,23 +146,22 @@ async def process_result(result, metadata, exc):
 
     result: the return value of the function, which will be serialized and
             returned back in the API.
-
-    exc: the exception object.
     """
 
     if isinstance(result, BaseHTTPResponse):
         return result
 
-    if not exc:
-        if metadata.response_serializer:
-            result = metadata.response_serializer.to_primitive(result, metadata.context)
-        else:
-            result = serializers.to_primitive(result)
+    if metadata.response_serializer:
+        result = metadata.response_serializer.to_primitive(result, metadata.context)
+    else:
+        result = utils.to_primitive(result)
 
-    response_shape = serializers.get_value(metadata.context, 'response_shape', ResponseShape)
+    response_shape = utils.get_value(metadata.context, 'response_shape')
+    if not response_shape:
+        response_shape = utils.import_from_str(settings.get('RESPONSE_SHAPE'))
     if not issubclass(response_shape, ResponseShape):
         response_shape = ResponseShape
 
-    result, code = response_shape.create_body(result, metadata.success_code, exc)
+    result, code = response_shape.create_body(result, metadata.success_code)
 
     return json(body=result, status=code)

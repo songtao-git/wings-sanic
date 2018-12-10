@@ -1,4 +1,7 @@
 # -*- coding: utf-8 -*-
+from sanic.response import json
+
+from wings_sanic import settings, utils
 
 
 class ResponseShape:
@@ -8,16 +11,13 @@ class ResponseShape:
     """
 
     @staticmethod
-    def create_body(result, success_code, exc):
+    def create_body(result, status_code):
         """
         :param result: success result
-        :param success_code: success code
-        :param exc: exception
-        :return: a tuple (final result, code)
+        :param status_code: 
+        :return: a tuple (final result, status_code)
         """
-        if exc:
-            return getattr(exc, 'message', str(exc)), getattr(exc, 'status_code', 500)
-        return result, success_code
+        return result, status_code
 
     @staticmethod
     def swagger(result_schema):
@@ -42,22 +42,15 @@ class ResponseShapeCodeDataMsg(ResponseShape):
     """
 
     @staticmethod
-    def create_body(result, success_code, exc):
-        code = 200
-        if exc:
-            result = {
-                'code': getattr(exc, 'status_code', 500),
-                'data': result,
-                'msg': getattr(exc, 'message', str(exc))
-            }
-            return result, code
-        else:
-            result = {
-                'code': success_code,
-                'data': result,
-                'msg': 'success'
-            }
-        return result, code
+    def create_body(result, status_code):
+        code = 0 if int(status_code / 100) == 2 else status_code
+        status_code = 200
+        result = {
+            'code': code,
+            'data': result,
+            'msg': '操作成功' if code == 0 else result
+        }
+        return result, status_code
 
     @staticmethod
     def swagger(result_schema):
@@ -71,3 +64,13 @@ class ResponseShapeCodeDataMsg(ResponseShape):
             },
             "required": ["code", "data", "msg"],
         }
+
+
+def exception_handler(request, exception):
+    response_shape = utils.import_from_str(settings.get('RESPONSE_SHAPE'))
+    if not issubclass(response_shape, ResponseShape):
+        response_shape = ResponseShape
+    result = utils.get_value(exception, 'message', str(exception))
+    code = utils.get_value(exception, 'status_code', 500)
+    result, code = response_shape.create_body(result, code)
+    return json(body=result, status=code)

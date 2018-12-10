@@ -12,7 +12,7 @@ from typing import Sequence, Mapping
 import six
 from sanic import exceptions
 
-from . import datetime_helper
+from . import datetime_helper, utils
 
 
 class Undefined:
@@ -69,83 +69,6 @@ class Undefined:
 
 
 Undefined = Undefined()
-
-
-def instance_to_dict(instance):
-    """
-    Convert instance to dict
-    """
-    if not hasattr(instance, '__dict__'):
-        return None
-    data = {}
-    for k, v in instance.__dict__.items():
-        if k.startswith('__'):
-            continue
-        if k.startswith('_'):
-            continue
-        if callable(v):
-            continue
-        data[k] = v
-    return data
-
-
-def to_native(obj):
-    """Convert obj to a richer Python construct. The obj can be anything
-    """
-    if obj is None:
-        return None
-    if isinstance(obj, (int, float, bool, datetime.datetime, datetime.date, decimal.Decimal)):
-        return obj
-    elif isinstance(obj, str):
-        value = datetime_helper.parse_datetime(obj)
-        if not value:
-            value = datetime_helper.parse_date(obj)
-        return value or obj
-
-    if hasattr(obj, 'to_native') and callable(obj.to_native) \
-            and len(inspect.signature(obj.to_native).parameters) == 1:
-        return obj.to_native()
-
-    if hasattr(obj, '__dict__'):
-        obj = instance_to_dict(obj)
-
-    if isinstance(obj, Sequence):
-        return [to_native(item) for item in obj]
-    if isinstance(obj, Mapping):
-        return dict(
-            (k, to_native(v)) for k, v in obj.items()
-        )
-    return obj
-
-
-def to_primitive(obj):
-    """Convert obj to a value safe to serialize.
-    """
-    if obj is None:
-        return None
-    if hasattr(obj, 'to_primitive') and callable(obj.to_primitive) \
-            and len(inspect.signature(obj.to_primitive).parameters) == 1:
-        return obj.to_primitive()
-    data = to_native(obj)
-    if isinstance(data, (int, float, bool, str)):
-        return data
-    if isinstance(data, datetime.datetime):
-        return datetime_helper.get_time_str(obj)
-    if isinstance(data, datetime.date):
-        return datetime_helper.get_date_str(obj)
-    if isinstance(data, Sequence):
-        return [to_primitive(e) for e in data]
-    elif isinstance(data, Mapping):
-        return dict(
-            (k, to_primitive(v)) for k, v in data.items()
-        )
-    return str(data)
-
-
-def get_value(instance_or_dict, name, default=None):
-    if isinstance(instance_or_dict, Mapping):
-        return instance_or_dict.get(name, default)
-    return getattr(instance_or_dict, name, default)
 
 
 # ---------------------- Field -----------------------
@@ -268,7 +191,7 @@ class BaseField(metaclass=FieldMeta):
         self.name = field_name
         assert isinstance(owner_serializer, BaseSerializer), 'owner_model should be instance of BaseSerializer'
         self.owner_serializer = owner_serializer
-        self.label_sequence = get_value(owner_serializer, 'label_sequence', []) + self.label_sequence
+        self.label_sequence = utils.get_value(owner_serializer, 'label_sequence', []) + self.label_sequence
 
     @property
     def default(self):
@@ -468,7 +391,8 @@ class DecimalField(NumberField):
         try:
             value = decimal.Decimal(value)
         except (TypeError, decimal.InvalidOperation):
-            raise exceptions.InvalidUsage(self.messages['number_coerce'].format(self.full_label, value, self.number_type))
+            raise exceptions.InvalidUsage(
+                self.messages['number_coerce'].format(self.full_label, value, self.number_type))
 
         return value
 
@@ -756,12 +680,12 @@ class JsonField(BaseField):
             elif isinstance(value, str):
                 return json.loads(value)
             else:
-                return to_native(value)
+                return utils.to_native(value)
         except (TypeError, ValueError):
             raise exceptions.InvalidUsage('{0}的值不是有效的json格式')
 
     def to_primitive(self, value, context=None):
-        to_primitive(value)
+        utils.to_primitive(value)
 
 
 # ---------------------- Serializer ------------------------
@@ -846,7 +770,7 @@ class BaseSerializer(metaclass=SerializerMeta):
     def _setup(self, parent_field):
         assert isinstance(parent_field, BaseField), 'parent_field should be instance of BaseField'
         self.parent_field = parent_field
-        self.label_sequence = get_value(parent_field, 'label_sequence', []) + self.label_sequence
+        self.label_sequence = utils.get_value(parent_field, 'label_sequence', []) + self.label_sequence
 
     def to_native(self, data, context=None):
         raise NotImplementedError
@@ -879,7 +803,7 @@ class Serializer(BaseSerializer):
         Validates the state of the model.
         """
 
-        partial = get_value(context, 'partial', False)
+        partial = utils.get_value(context, 'partial', False)
         data = self.to_native(data, context)
 
         if data is not None:
@@ -901,11 +825,11 @@ class Serializer(BaseSerializer):
             return None
         primitive_data = {}
         for field_name, field in self.fields.items():
-            serialize_when_none = get_value(context,
-                                            'serialize_when_none',
-                                            get_value(self._meta,
-                                                      'serialize_when_none',
-                                                      field.serialize_when_none))
+            serialize_when_none = utils.get_value(context,
+                                                  'serialize_when_none',
+                                                  utils.get_value(self._meta,
+                                                                  'serialize_when_none',
+                                                                  field.serialize_when_none))
             field_data = data.get(field_name, None)
             if field_data is None and not serialize_when_none:
                 continue

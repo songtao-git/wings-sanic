@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 import json
 import os
 
@@ -5,9 +6,7 @@ from wings_sanic import application, settings
 
 # -----------  dev settings -------------
 dev_settings = {
-    'BLUEPRINTS': [
-        'bp_a.bp'
-    ]
+    'BLUEPRINTS': []
 }
 settings.load(**dev_settings)
 
@@ -20,6 +19,13 @@ if config_json:
             settings.load(**conf)
     except:
         pass
+
+
+# ---------------- do init project. for example: init redis -------------------
+@application.app.listener('after_server_start')
+async def init_project(sanic, loop):
+    pass
+
 
 # --------------------- main -----------------
 if __name__ == '__main__':
