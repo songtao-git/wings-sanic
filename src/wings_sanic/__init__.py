@@ -4,7 +4,9 @@ import logging
 
 logger = logging.getLogger('wings_sanic')
 
-__all__ = ['registry', 'inspector']
+__all__ = ['registry', 'inspector', 'DEFAULT_CONTEXT']
+
+DEFAULT_CONTEXT = {}
 
 
 class registry:

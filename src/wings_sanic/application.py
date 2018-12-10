@@ -5,12 +5,15 @@ import logging
 import logging.config
 
 import uvloop
-from sanic import Sanic
+from sanic.exceptions import NotFound
+from sanic.response import redirect
 from sanic_cors import CORS
 
-from wings_sanic import settings, utils, serializers, decorators, registry, inspector
+from wings_sanic import settings, utils, serializers, registry, inspector
+from wings_sanic.app import WingsSanic
+from wings_sanic.swagger import swagger_blueprint
 
-app = Sanic()
+app = WingsSanic()
 
 
 def start():
@@ -28,6 +31,14 @@ def start():
     app.config.update(settings.working_settings)
 
     asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
+
+    # when DEBUG==True, swagger document is available
+    if settings.get('DEBUG'):
+        app.blueprint(swagger_blueprint)
+
+        @app.exception(NotFound)
+        def handle_404_redirect(request, exception):
+            return redirect('/swagger/')
 
     for bp_str in settings.get('BLUEPRINTS'):
         bp = utils.import_from_str(bp_str)
@@ -69,9 +80,7 @@ def start():
         setattr(response, 'exception', exception)
         return response
 
-    @decorators.route(app,
-                      path='/ping/',
-                      response_serializer={'ping': serializers.StringField('Ping-Pong', required=True)})
+    @app.get('/ping/', response_serializer={'ping': serializers.StringField('Ping-Pong', required=True)})
     async def ping(request, *args, **kwargs):
         return {'ping': 'pong'}
 

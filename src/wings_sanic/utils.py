@@ -84,8 +84,35 @@ def get_value(instance_or_dict, name, default=None):
     return getattr(instance_or_dict, name, default)
 
 
+def cls_str_of_meth(meth):
+    mod = inspect.getmodule(meth)
+    cls = meth.__qualname__.split('.<locals>', 1)[0].rsplit('.', 1)[0]
+    return '{0}.{1}'.format(mod.__name__, cls)
+
+
+def cls_str_of_obj(obj):
+    return '{0}.{1}'.format(obj.__class__.__module__, obj.__class__.__name__)
+
+
+def cls_str_of_cls(cls):
+    return '{0}.{1}'.format(cls.__module__, cls.__name__)
+
+
+def meth_str(meth):
+    return '{0}.{1}'.format(meth.__module__, meth.__qualname__)
+
+
 def import_from_str(obj_path):
     module_name, obj_name = obj_path.rsplit('.', 1)
     module_meta = __import__(module_name, globals(), locals(), [obj_name])
     obj_meta = getattr(module_meta, obj_name)
     return obj_meta
+
+
+# Removes all null values from a dictionary
+def remove_nulls(dictionary, deep=True):
+    return {
+        k: remove_nulls(v, deep) if deep and type(v) is dict else v
+        for k, v in dictionary.items()
+        if v is not None
+    }

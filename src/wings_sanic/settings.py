@@ -8,6 +8,7 @@ DEFAULTS = {
     'PROJECT_VERSION': os.environ.get('PROJECT_VERSION', ''),
     'HTTP_PORT': 80,
     'CORS': False,
+    'DEBUG': False,
 
     'LOG': {
         'version': 1,
@@ -43,11 +44,26 @@ DEFAULTS = {
 
     'BLUEPRINTS': [],
 
-    'DEBUG': False,
-
     'WORKERS': 1,
     'RESPONSE_SHAPE': 'wings_sanic.views.ResponseShapeCodeDataMsg',
-    'EXCEPTION_HANDLER': 'wings_sanic.views.exception_handler'
+    'EXCEPTION_HANDLER': 'wings_sanic.views.exception_handler',
+
+    'SWAGGER': {
+        'info': {
+            "version": os.environ.get('PROJECT_VERSION', '1.0.0'),
+            "title": os.environ.get('PROJECT_NAME', 'API'),
+            "description": '',
+            "termsOfService": None,
+            "contact": {
+                "email": None
+            },
+            "license": {
+                "email": None,
+                "url": None
+            }
+        },
+        'schemes': ['http']
+    }
 }
 
 

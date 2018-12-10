@@ -6,7 +6,24 @@ from wings_sanic import application, settings
 
 # -----------  dev settings -------------
 dev_settings = {
-    'BLUEPRINTS': []
+    'BLUEPRINTS': [],
+    'SWAGGER': {
+        'info': {
+            "version": os.environ.get('PROJECT_VERSION', '1.0.0'),
+            "title": os.environ.get('PROJECT_NAME', 'API'),
+            "description": '',
+            "termsOfService": None,
+            "contact": {
+                "email": None
+            },
+            "license": {
+                "email": None,
+                "url": None
+            }
+        },
+        'schemes': ['http']
+    },
+    'DEBUG': True,
 }
 settings.load(**dev_settings)
 

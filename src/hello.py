@@ -6,8 +6,26 @@ from wings_sanic import application, settings
 # -----------  dev settings -------------
 dev_settings = {
     'BLUEPRINTS': [
-        'bp_a.bp'
-    ]
+        'test.bp'
+    ],
+
+    'SWAGGER': {
+        'info': {
+            "version": os.environ.get('PROJECT_VERSION', '1.0.0'),
+            "title": 'Wings-Sanic Sample',
+            "description": 'test for wings-sanic',
+            "termsOfService": None,
+            "contact": {
+                "email": None
+            },
+            "license": {
+                "email": None,
+                "url": None
+            }
+        },
+        'schemes': ['http']
+    },
+    'DEBUG': True
 }
 settings.load(**dev_settings)
 
