@@ -959,11 +959,11 @@ class Serializer(BaseSerializer):
 
 
 class ListSerializer(BaseSerializer):
-    def __init__(self, label, child, **kwargs):
+    def __init__(self, child, **kwargs):
         if not isinstance(child, BaseSerializer):
             raise TypeError('child must be instance of BaseSerializer')
         self.child = child
-        super().__init__(label, **kwargs)
+        super().__init__(**kwargs)
         assert not self.fields, 'fields of ListSerializer should be empty'
 
     def ensure_sequence(self, value):
@@ -975,7 +975,7 @@ class ListSerializer(BaseSerializer):
             return value
         elif isinstance(value, Iterable):
             return value
-        raise exceptions.InvalidUsage('{0}应是列表'.format(self.label))
+        raise exceptions.InvalidUsage('内容应是列表')
 
     def to_native(self, data, context=None):
         if data is None or data is Undefined:
@@ -996,7 +996,7 @@ class ListSerializer(BaseSerializer):
                 try:
                     validated_data.append(self.child.validate(item, context))
                 except exceptions.SanicException as exc:
-                    raise exceptions.InvalidUsage('{0}第{1}个值有误:{2}'.format(self.label, index + 1, exc))
+                    raise exceptions.InvalidUsage('第{0}个值有误:{1}'.format(index + 1, exc))
             data = validated_data
 
         for validator in self.validators:

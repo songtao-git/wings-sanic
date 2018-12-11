@@ -58,9 +58,9 @@ class ResponseShapeCodeDataMsg(ResponseShape):
             "title": "SuccessObject",
             "type": "object",
             "properties": {
-                "code": {"type": "number"},
+                "code": {"type": "number", "description": "返回码:0或2xx成功，其他失败"},
                 "data": result_schema,
-                "msg": {"type": "string"}
+                "msg": {"type": "string", "description": "友好可读消息, 失败时返回错误信息"}
             },
             "required": ["code", "data", "msg"],
         }

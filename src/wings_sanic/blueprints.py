@@ -66,7 +66,7 @@ class WingsBluePrint(Blueprint):
         """
         method = method.upper()
 
-        context = context or {k: v for k, v in DEFAULT_CONTEXT}
+        context = context or {k: v for k, v in DEFAULT_CONTEXT.items()}
 
         tags = tags or [self.name]
 
