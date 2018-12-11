@@ -16,11 +16,13 @@ DEFAULTS = {
         'loggers': {
             "": {
                 "level": 'WARNING',
-                "handlers": ["default"]
+                "handlers": ["default"],
+                'propagate': False,
             },
             'wings_sanic': {
                 "level": 'INFO',
-                "handlers": ["wings_sanic"]
+                "handlers": ["wings_sanic"],
+                'propagate': False,
             }
         },
         'handlers': {

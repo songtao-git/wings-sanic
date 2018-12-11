@@ -6,17 +6,17 @@ from wings_sanic import application, settings, DEFAULT_CONTEXT, views
 # -----------  dev settings -------------
 dev_settings = {
     'BLUEPRINTS': [
-        'test.bp'
+        'api.api'
     ],
 
     'SWAGGER': {
         'info': {
             "version": os.environ.get('PROJECT_VERSION', '1.0.0'),
-            "title": 'Wings-Sanic Sample',
-            "description": 'test for wings-sanic',
+            "title": 'Sample API',
+            "description": 'sample for wings-sanic',
             "termsOfService": None,
             "contact": {
-                "email": None
+                "email": "songtao@klicen.com"
             },
             "license": {
                 "email": None,

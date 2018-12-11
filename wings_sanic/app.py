@@ -83,6 +83,7 @@ class WingsSanic(Sanic):
         def decorator(raw_handler):
             @wraps(raw_handler)
             async def handler(request, *args, **kwargs):
+                request.metadata = metadata
                 kwargs = await views.extract_params(request, metadata)
                 result = await raw_handler(request, **kwargs)
                 response = await views.process_result(result, metadata)

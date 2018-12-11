@@ -83,8 +83,8 @@ def build_spec(app, loop):
             response_spec = None
             if metadata.response_serializer:
                 response_spec = metadata.response_serializer.openapi_spec()
-                response_shape = get_response_shape(metadata.context)
-                response_spec = response_shape.swagger(response_spec)
+            response_shape = get_response_shape(metadata.context)
+            response_spec = response_shape.swagger(response_spec)
 
             summary, description = __summary_description(inspect.cleandoc(_handler.__doc__ or ""))
 
@@ -128,7 +128,5 @@ def spec(request, *args, **kwargs):
 
 
 dir_path = os.path.dirname(os.path.realpath(__file__))
-dir_path = os.path.abspath(dir_path + '/ui')
 
 blueprint.static('/', dir_path + '/index.html')
-blueprint.static('/', dir_path)

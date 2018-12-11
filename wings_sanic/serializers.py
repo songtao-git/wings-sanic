@@ -152,8 +152,10 @@ class BaseField(metaclass=FieldMeta):
 
     def __init__(self, label, help_text=None, required=False,
                  default=Undefined, choices=None, validators=None,
-                 serialize_when_none=True, messages=None):
+                 serialize_when_none=True, messages=None, read_only=None, write_only=None):
         assert not (required and default is not Undefined), 'May not set both `required` and `default`'
+        assert not (read_only and write_only), 'May not set both `read_only` and `write_only`'
+
         super().__init__()
         if not label or not isinstance(label, str):
             raise ValueError('label must be a effective string')
@@ -170,6 +172,8 @@ class BaseField(metaclass=FieldMeta):
             self.validators += list(validators)
         self.serialize_when_none = serialize_when_none
         self.messages = dict(self.MESSAGES, **(messages or {}))
+        self.read_only = read_only
+        self.write_only = write_only
 
         self.name = None
         self.owner_serializer = None
@@ -249,10 +253,14 @@ class BaseField(metaclass=FieldMeta):
         spec = {
             'required': self.required,
             'name': self.name,
-            'description': self.label
+            'description': self.label,
         }
         if self.choices:
             spec['enum'] = self.choices
+        if self.write_only is not None:
+            spec['writeOnly'] = self.write_only
+        if self.read_only is not None:
+            spec['readOnly'] = self.read_only
         return spec
 
 
@@ -907,7 +915,7 @@ class Serializer(BaseSerializer):
             validate_data = {}
             for field_name, field in self.fields.items():
                 field_data = data.get(field_name, None)
-                if field_data is None and partial:
+                if field.read_only or (field_data is None and partial):
                     continue
                 validate_data[field_name] = field.validate(field_data, context)
             data = validate_data
@@ -928,7 +936,7 @@ class Serializer(BaseSerializer):
                                                                   'serialize_when_none',
                                                                   field.serialize_when_none))
             field_data = data.get(field_name, None)
-            if field_data is None and not serialize_when_none:
+            if field.write_only or (field_data is None and not serialize_when_none):
                 continue
             primitive_data[field_name] = field.to_primitive(field_data, context)
         return primitive_data

@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 from sanic.response import json, BaseHTTPResponse
 
-from wings_sanic import utils
+from wings_sanic import utils, serializers, DEFAULT_CONTEXT
 
 
 class ResponseShape:
@@ -54,12 +54,14 @@ class ResponseShapeCodeDataMsg(ResponseShape):
 
     @staticmethod
     def swagger(result_schema):
+        if result_schema is None:
+            result_schema = {'type': 'object', 'description': '空值', 'nullable': True}
         return {
             "title": "SuccessObject",
             "type": "object",
             "properties": {
                 "code": {"type": "number", "description": "返回码:0或2xx成功，其他失败"},
-                "data": result_schema,
+                "data":  result_schema,
                 "msg": {"type": "string", "description": "友好可读消息, 失败时返回错误信息"}
             },
             "required": ["code", "data", "msg"],
@@ -74,7 +76,12 @@ def get_response_shape(context=None):
 
 
 def exception_handler(request, exception):
-    response_shape = get_response_shape()
+    metadata = utils.get_value(request, 'metadata')
+    context = utils.get_value(metadata, 'context')
+    if not context:
+        context = DEFAULT_CONTEXT
+
+    response_shape = get_response_shape(context)
 
     result = utils.get_value(exception, 'message', str(exception))
     code = utils.get_value(exception, 'status_code', 500)

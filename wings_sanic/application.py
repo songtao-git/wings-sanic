@@ -14,6 +14,7 @@ from wings_sanic.app import WingsSanic
 from wings_sanic.swagger import swagger_blueprint
 
 app = WingsSanic()
+registry.set('app', app)
 
 
 def start():
