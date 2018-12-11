@@ -3,7 +3,7 @@ from functools import wraps
 
 from sanic import Sanic
 
-from wings_sanic import serializers, DEFAULT_CONTEXT, views
+from wings_sanic import serializers, settings, views
 from wings_sanic.metadata import HandlerMetaData
 
 __all__ = ['WingsSanic']
@@ -66,7 +66,7 @@ class WingsSanic(Sanic):
         """
         method = method.upper()
 
-        context = context or {k: v for k, v in DEFAULT_CONTEXT.items()}
+        context = context or {k: v for k, v in settings.get('DEFAULT_CONTEXT').items()}
 
         metadata = HandlerMetaData(uri=uri,
                                    method=method,
@@ -83,7 +83,6 @@ class WingsSanic(Sanic):
         def decorator(raw_handler):
             @wraps(raw_handler)
             async def handler(request, *args, **kwargs):
-                request.metadata = metadata
                 kwargs = await views.extract_params(request, metadata)
                 result = await raw_handler(request, **kwargs)
                 response = await views.process_result(result, metadata)
@@ -240,7 +239,7 @@ class WingsSanic(Sanic):
               tags: list = None,
               context: dict = None,
               swagger_exclude: bool = False):
-        context = context or {k: v for k, v in DEFAULT_CONTEXT}
+        context = context or {k: v for k, v in settings.get('DEFAULT_CONTEXT').items()}
         context['partial'] = True
 
         return self.wings_route(uri, method='PATCH', host=host,

@@ -9,6 +9,7 @@ DEFAULTS = {
     'HTTP_PORT': 80,
     'CORS': False,
     'DEBUG': False,
+    'DEFAULT_CONTEXT': {},
 
     'LOG': {
         'version': 1,

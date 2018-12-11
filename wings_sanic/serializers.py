@@ -14,6 +14,10 @@ from sanic import exceptions
 
 from . import datetime_helper, utils
 
+__all__ = ['UUIDField', 'StringField', 'NumberField', 'IntField', 'FloatField', 'DecimalField', 'BooleanField',
+           'DateTimeField', 'DateField', 'TimestampField', 'EmailField', 'PhoneField', 'IDField', 'SerializerField',
+           'ListField', 'JsonField', 'Serializer', 'ListSerializer']
+
 
 class Undefined:
     """A type and singleton value (like None) to represent fields that
@@ -883,10 +887,23 @@ class BaseSerializer(metaclass=SerializerMeta):
 
 class Serializer(BaseSerializer):
     def __init__(self, *args, **kwargs):
+        kwargs.pop('many', None)
         super().__init__(*args, **kwargs)
 
         if self.__class__ != Serializer and self.__class__ not in definitions:
             definitions[self.__class__] = (self, self.definition)
+
+    def __new__(cls, *args, **kwargs):
+        # We override this method in order to automagically create
+        # `ListSerializer` class instead when `many=True` is set.
+        if kwargs.pop('many', False):
+            return cls.many_init(*args, **kwargs)
+        return super(Serializer, cls).__new__(cls)
+
+    @classmethod
+    def many_init(cls, *args, **kwargs):
+        child_serializer = cls(*args, **kwargs)
+        return ListSerializer(child=child_serializer)
 
     def to_native(self, data, context=None):
         if data is None or data is Undefined:
@@ -943,18 +960,26 @@ class Serializer(BaseSerializer):
 
     @property
     def definition(self):
+        properties = {}
+        required = []
+        for name, field in self.fields.items():
+            item_spec = field.openapi_spec()
+            item_spec.pop('name', None)
+
+            properties[name] = item_spec
+
+            if item_spec.pop('required', False):
+                required.append(name)
+
         return {
             "type": "object",
-            "properties": {
-                name: field.openapi_spec()
-                for name, field in self.fields.items()
-            }
+            'required': required,
+            "properties": properties
         }
 
     def openapi_spec(self):
         if self.__class__ != Serializer:
             return {
-                "type": "object",
                 "$ref": "#/definitions/{}".format(self.__class__.__name__),
             }
         return {

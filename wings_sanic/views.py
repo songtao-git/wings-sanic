@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 from sanic.response import json, BaseHTTPResponse
 
-from wings_sanic import utils, serializers, DEFAULT_CONTEXT
+from wings_sanic import utils, serializers, settings
 
 
 class ResponseShape:
@@ -61,7 +61,7 @@ class ResponseShapeCodeDataMsg(ResponseShape):
             "type": "object",
             "properties": {
                 "code": {"type": "number", "description": "返回码:0或2xx成功，其他失败"},
-                "data":  result_schema,
+                "data": result_schema,
                 "msg": {"type": "string", "description": "友好可读消息, 失败时返回错误信息"}
             },
             "required": ["code", "data", "msg"],
@@ -76,11 +76,7 @@ def get_response_shape(context=None):
 
 
 def exception_handler(request, exception):
-    metadata = utils.get_value(request, 'metadata')
-    context = utils.get_value(metadata, 'context')
-    if not context:
-        context = DEFAULT_CONTEXT
-
+    context = {k: v for k, v in settings.get('DEFAULT_CONTEXT').items()}
     response_shape = get_response_shape(context)
 
     result = utils.get_value(exception, 'message', str(exception))

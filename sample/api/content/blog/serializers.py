@@ -1,17 +1,17 @@
-from wings_sanic import serializers
+import wings_sanic
 
 
-class CreateBlogSerializer(serializers.Serializer):
-    title = serializers.StringField("博客标题", required=True)
-    content = serializers.StringField("博客内容")
+class CreateBlogSerializer(wings_sanic.Serializer):
+    title = wings_sanic.StringField("博客标题", required=True)
+    content = wings_sanic.StringField("博客内容")
 
 
-class SimpleBlogSerializer(serializers.Serializer):
-    id = serializers.IntField('博客Id', required=True)
-    title = serializers.StringField("博客标题", required=True)
+class SimpleBlogSerializer(wings_sanic.Serializer):
+    id = wings_sanic.IntField('博客Id', required=True)
+    title = wings_sanic.StringField("博客标题", required=True)
 
 
-class DetailBlogSerializer(serializers.Serializer):
-    id = serializers.IntField('博客Id', required=True)
-    title = serializers.StringField("博客标题", required=True)
-    content = serializers.StringField("博客内容")
+class DetailBlogSerializer(wings_sanic.Serializer):
+    id = wings_sanic.IntField('博客Id', required=True)
+    title = wings_sanic.StringField("博客标题", required=True)
+    content = wings_sanic.StringField("博客内容")

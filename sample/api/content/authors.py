@@ -1,14 +1,13 @@
-from wings_sanic import serializers
-from wings_sanic.blueprints import WingsBluePrint
+import wings_sanic
 
-authors = WingsBluePrint('content_authors', url_prefix='/authors')
+authors = wings_sanic.WingsBluePrint('content_authors', url_prefix='/authors')
 
 
-class Author(serializers.Serializer):
-    id = serializers.IntField('Id', read_only=True)
-    name = serializers.StringField("姓名", required=True)
-    phone = serializers.PhoneField('电话', required=True)
-    password = serializers.StringField('密码', required=True, write_only=True)
+class Author(wings_sanic.Serializer):
+    id = wings_sanic.IntField('Id', read_only=True)
+    name = wings_sanic.StringField("姓名", required=True)
+    phone = wings_sanic.PhoneField('电话', required=True)
+    password = wings_sanic.StringField('密码', required=True, write_only=True)
 
 
 authors_db = {
@@ -22,7 +21,7 @@ def get_author_id():
     return author_id
 
 
-@authors.get('/', response_serializer=serializers.ListSerializer(child=Author()))
+@authors.get('/', response_serializer=Author(many=True))
 async def list_authors(request, *args, **kwargs):
     """
     authors列表
@@ -43,7 +42,7 @@ async def create_author(request, body, *args, **kwargs):
 
 
 @authors.get('/<author_id>/',
-             path_params={'author_id': serializers.IntField('作者Id')},
+             path_params={'author_id': wings_sanic.IntField('作者Id')},
              response_serializer=Author())
 async def author_detail(request, author_id, *args, **kwargs):
     """

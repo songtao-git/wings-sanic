@@ -31,7 +31,7 @@ class HandlerMetaData:
     ):
         self.uri = uri
         self.method = method
-        self.tags = set(tags or [])
+        self.tags = list(set(tags or []))
         self.success_code = success_code
         self.path_serializer = self.sure_serializer(path_params)
         self.query_serializer = self.sure_serializer(query_params)

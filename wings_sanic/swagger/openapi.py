@@ -75,8 +75,7 @@ def build_spec(app, loop):
                     'in': 'body',
                     'name': 'body',
                     'required': True,
-                    'schema': spec,
-                    'type': 'object'
+                    'schema': spec
                 })
 
             # response

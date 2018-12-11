@@ -2,11 +2,14 @@
 import json
 import os
 
-from wings_sanic import application, settings, DEFAULT_CONTEXT, views
+from wings_sanic import application, settings, views
 
 # -----------  dev settings -------------
 dev_settings = {
     'BLUEPRINTS': [],
+    'DEFAULT_CONTEXT': {
+        'response_shape': views.ResponseShapeCodeDataMsg
+    },
     'SWAGGER': {
         'info': {
             "version": os.environ.get('PROJECT_VERSION', '1.0.0'),
@@ -26,7 +29,6 @@ dev_settings = {
     'DEBUG': True,
 }
 settings.load(**dev_settings)
-DEFAULT_CONTEXT['response_shape'] = views.ResponseShapeCodeDataMsg
 
 # ----------- use config that is from environ to cover dev_settings ----------
 config_json = os.environ.get('CONFIG', '')

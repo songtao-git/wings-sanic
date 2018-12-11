@@ -3,10 +3,10 @@ from functools import wraps
 
 from sanic import Blueprint
 
-from wings_sanic import serializers, DEFAULT_CONTEXT, views
+from wings_sanic import serializers, settings, views
 from wings_sanic.metadata import HandlerMetaData
 
-__all__ = ['WingsSanic']
+__all__ = ['WingsBluePrint']
 
 
 class WingsBluePrint(Blueprint):
@@ -66,7 +66,7 @@ class WingsBluePrint(Blueprint):
         """
         method = method.upper()
 
-        context = context or {k: v for k, v in DEFAULT_CONTEXT.items()}
+        context = context or {k: v for k, v in settings.get('DEFAULT_CONTEXT').items()}
 
         tags = tags or [self.name]
 
@@ -241,7 +241,7 @@ class WingsBluePrint(Blueprint):
               tags: list = None,
               context: dict = None,
               swagger_exclude: bool = False):
-        context = context or {k: v for k, v in DEFAULT_CONTEXT}
+        context = context or {k: v for k, v in settings.get('DEFAULT_CONTEXT').items()}
         context['partial'] = True
 
         return self.wings_route(uri, method='PATCH', host=host,

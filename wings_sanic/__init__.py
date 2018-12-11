@@ -2,11 +2,11 @@
 import asyncio
 import logging
 
+from wings_sanic.app import WingsSanic
+from wings_sanic.blueprints import WingsBluePrint
+from wings_sanic.serializers import *
+
 logger = logging.getLogger('wings_sanic')
-
-__all__ = ['registry', 'inspector', 'DEFAULT_CONTEXT']
-
-DEFAULT_CONTEXT = {}
 
 
 class registry:
@@ -50,27 +50,34 @@ class inspector:
         for task in self.tasks:
             func = task['func']
             args = task['args']
-            interval = task['interval']
-            if self._count % interval != 0:
+            if self._count % task['interval'] != 0 or task['times'] == 0:
                 continue
             if asyncio.iscoroutinefunction(func):
                 loop.create_task(func(*args))
             else:
                 loop.call_soon(func, *args)
 
+            if task['times'] > 0:
+                task['times'] -= 1
+
         self._count += 1
         if self._count > 9999999:
             self._count = 1
 
-    def register(self, func, *args, interval=1):
+    def register(self, func, *args, interval: int = 3, times: int = -1):
         """ 注册一个任务, 并制定间隔时间执行
-        @param func 执行的函数
-        @param interval 间隔时间, 单位秒
+        :param func 执行的函数
+        :param interval 间隔时间, 单位秒
+        :param  times 重复执行次数, <0时一直重复, =0时不重复
         """
+        assert isinstance(interval, int), 'interval should be integer'
+        assert isinstance(times, int), 'times should be integer'
+
         t = {
             'func': func,
             'args': args,
-            'interval': interval
+            'interval': interval,
+            'times': times
         }
         self.tasks.append(t)
 
