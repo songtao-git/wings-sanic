@@ -129,3 +129,4 @@ def spec(request, *args, **kwargs):
 dir_path = os.path.dirname(os.path.realpath(__file__))
 
 blueprint.static('/', dir_path + '/index.html')
+blueprint.static('/', dir_path)

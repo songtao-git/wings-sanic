@@ -30,7 +30,7 @@ dev_settings = {
         'schemes': ['http']
     },
     'HTTP_PORT': 8080,
-    # 'DEBUG': True,
+    'DEBUG': True,
     # 'DEV': True,
     # 'CORS': True
 }
