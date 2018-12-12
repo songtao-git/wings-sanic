@@ -7,9 +7,8 @@ DEFAULTS = {
     'PROJECT_NAME': os.environ.get('PROJECT_NAME', ''),
     'PROJECT_VERSION': os.environ.get('PROJECT_VERSION', ''),
     'HTTP_PORT': 80,
-    'CORS': False,
-    'DEBUG': False,
-    'DEFAULT_CONTEXT': {},
+    'WORKERS': 1,
+    'INSPECTOR_REPORT_INTERVAL': 30,
 
     'LOG': {
         'version': 1,
@@ -45,9 +44,14 @@ DEFAULTS = {
         },
     },
 
-    'BLUEPRINTS': [],
+    # default LOG(JsonFormatter) is useful for elk, but not friendly for develop debug.
+    # for convenience for develop, set True, then use sanic's log and its access_log is available
+    'DEV': False,
+    'CORS': False,
+    'DEBUG': False,
 
-    'WORKERS': 1,
+    'BLUEPRINTS': [],
+    'DEFAULT_CONTEXT': {},
     'RESPONSE_SHAPE': 'wings_sanic.views.ResponseShapeCodeDataMsg',
     'EXCEPTION_HANDLER': 'wings_sanic.views.exception_handler',
 

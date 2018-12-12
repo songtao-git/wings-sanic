@@ -5,6 +5,7 @@ import logging
 from wings_sanic.app import WingsSanic
 from wings_sanic.blueprints import WingsBluePrint
 from wings_sanic.serializers import *
+from wings_sanic import settings
 
 logger = logging.getLogger('wings_sanic')
 
@@ -43,9 +44,14 @@ class inspector:
         """ 启动
         """
         loop = registry.get('event_loop') or asyncio.get_event_loop()
-        if self._count % 30 == 0:
+        report_interval = settings.get('INSPECTOR_REPORT_INTERVAL')
+        if self._count % report_interval == 0:
             logger.info('inspector working, count: %s', self._count)
         loop.call_later(self._interval, self.start)
+
+        self._count += 1
+        if self._count > 9999999:
+            self._count = 1
 
         for task in self.tasks:
             func = task['func']
@@ -59,10 +65,6 @@ class inspector:
 
             if task['times'] > 0:
                 task['times'] -= 1
-
-        self._count += 1
-        if self._count > 9999999:
-            self._count = 1
 
     def register(self, func, *args, interval: int = 3, times: int = -1):
         """ 注册一个任务, 并制定间隔时间执行

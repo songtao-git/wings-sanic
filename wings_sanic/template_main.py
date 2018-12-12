@@ -27,6 +27,8 @@ dev_settings = {
         'schemes': ['http']
     },
     'DEBUG': True,
+    'DEV': True,
+    'CORS': True
 }
 settings.load(**dev_settings)
 

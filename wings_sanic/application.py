@@ -23,8 +23,8 @@ def start():
     by `wings_sanic.settings.load(**user_settings)`
     :return: 
     """
-
-    logging.config.dictConfig(settings.get('LOG'))
+    if not settings.get('DEV'):
+        logging.config.dictConfig(settings.get('LOG'))
 
     if settings.get('CORS'):
         CORS(app, automatic_options=True, supports_credentials=True)
@@ -91,4 +91,4 @@ def start():
         loop.call_soon(inspector.start)
 
     app.run(host="0.0.0.0", port=settings.get('HTTP_PORT'), workers=settings.get('WORKERS'),
-            debug=settings.get('DEBUG'), access_log=False)
+            debug=settings.get('DEBUG'), access_log=settings.get('DEV'))
