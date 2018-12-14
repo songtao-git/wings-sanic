@@ -18,7 +18,7 @@ tests_require = []
 setup(name='wings-sanic',
       version='0.1.0',
       description='wings-sanic is lightweight python framework for sainc',
-      long_description=open(README_PATH).read(),
+      long_description=open(README_PATH, encoding='utf-8').read(),
       author='SongTao',
       author_email='songtao@klicen.com',
       url='https://github.com/songtao-git/wings-sanic',
@@ -30,6 +30,8 @@ setup(name='wings-sanic',
           'Operating System :: POSIX :: Linux',
           'Topic :: System :: Software Distribution',
           'License :: OSI Approved :: MIT License',
-          'Programming Language :: Python :: 3.5+'
+          'Programming Language :: Python :: 3.5',
+          'Programming Language :: Python :: 3.6',
+          'Programming Language :: Python :: 3.7',
       ]
       )
