@@ -1,8 +1,8 @@
 # wings-sanic
 
 Welcome to wings-sanic README file.
-The wings-sanic is a lightweight python framework aimed at making it as simple as possible to document your Sanic API with Swagger UI, Plus param validation and model serialization.
 
+The wings-sanic is a lightweight python framework aimed at making it as simple as possible to document your Sanic API with Swagger UI, Plus param validation and model serialization.
 
 
 ## What is wings-sanic
@@ -109,7 +109,7 @@ if __name__ == '__main__':
 
 ```
 
-Run and then you can get swagger documents by browser http//:0.0.0.0:8080/swagger/
+Run and then you can get swagger documents by browser `http//:0.0.0.0:8080/swagger/`
 
 ## Document
 Todo
