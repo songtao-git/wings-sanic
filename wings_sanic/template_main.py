@@ -2,13 +2,13 @@
 import json
 import os
 
-from wings_sanic import application, settings, views
+from wings_sanic import application, settings
 
 # -----------  dev settings -------------
 dev_settings = {
     'BLUEPRINTS': [],
     'DEFAULT_CONTEXT': {
-        'response_shape': views.ResponseShapeCodeDataMsg
+        'response_shape': 'wings-sanic.views.ResponseShapeCodeDataMsg'
     },
     'SWAGGER': {
         'info': {
