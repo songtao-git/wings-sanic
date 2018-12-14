@@ -1,11 +1,6 @@
 # !/usr/bin/env python
-import os
 
 from setuptools import setup, find_packages
-
-base = os.path.dirname(os.path.abspath(__file__))
-
-README_PATH = os.path.join(base, "README.md")
 
 install_requires = [
     'six',
@@ -16,9 +11,9 @@ install_requires = [
 tests_require = []
 
 setup(name='wings-sanic',
-      version='0.1.0',
-      description='wings-sanic is lightweight python framework for sainc',
-      long_description=open(README_PATH, encoding='utf-8').read(),
+      version='0.1.1',
+      description='The wings-sanic is a lightweight python framework aimed at making it as simple as possible to document your Sanic API with Swagger UI, Plus param validation and model serialization.',
+      long_description='The wings-sanic is a lightweight python framework aimed at making it as simple as possible to document your Sanic API with Swagger UI, Plus param validation and model serialization.',
       author='SongTao',
       author_email='songtao@klicen.com',
       url='https://github.com/songtao-git/wings-sanic',
