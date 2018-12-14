@@ -84,4 +84,7 @@ def get(attr):
         # Check if present in user settings
         return working_settings[attr]
     except KeyError:
-        raise AttributeError("Invalid setting: '%s'" % attr)
+        try:
+            return DEFAULTS[attr]
+        except KeyError:
+            raise AttributeError("Invalid setting: '%s'" % attr)

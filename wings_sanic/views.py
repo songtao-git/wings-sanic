@@ -70,6 +70,8 @@ class ResponseShapeCodeDataMsg(ResponseShape):
 
 def get_response_shape(context=None):
     response_shape = utils.get_value(context, 'response_shape')
+    if isinstance(response_shape, str):
+        response_shape = utils.import_from_str(response_shape)
     if not response_shape or not issubclass(response_shape, ResponseShape):
         response_shape = ResponseShape
     return response_shape
