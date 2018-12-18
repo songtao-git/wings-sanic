@@ -1,6 +1,13 @@
 # !/usr/bin/env python
 
+import os
+import sys
+
 from setuptools import setup, find_packages
+
+if sys.argv[-1] == 'publish':
+    os.system("python setup.py sdist upload")
+    sys.exit()
 
 install_requires = [
     'six',
@@ -8,10 +15,8 @@ install_requires = [
     'Sanic-Cors',
 ]
 
-tests_require = []
-
 setup(name='wings-sanic',
-      version='0.1.1',
+      version='0.1.3',
       description='The wings-sanic is a lightweight python framework aimed at making it as simple as possible to document your Sanic API with Swagger UI, Plus param validation and model serialization.',
       long_description='The wings-sanic is a lightweight python framework aimed at making it as simple as possible to document your Sanic API with Swagger UI, Plus param validation and model serialization.',
       author='SongTao',
@@ -28,5 +33,5 @@ setup(name='wings-sanic',
           'Programming Language :: Python :: 3.5',
           'Programming Language :: Python :: 3.6',
           'Programming Language :: Python :: 3.7',
-      ]
+      ],
       )

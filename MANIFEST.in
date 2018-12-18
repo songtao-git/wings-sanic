@@ -1,0 +1,2 @@
+include wings_sanic/swagger/*.png
+include wings_sanic/swagger/*.html
