@@ -16,7 +16,7 @@ install_requires = [
 ]
 
 setup(name='wings-sanic',
-      version='0.1.3',
+      version='0.1.5',
       description='The wings-sanic is a lightweight python framework aimed at making it as simple as possible to document your Sanic API with Swagger UI, Plus param validation and model serialization.',
       long_description='The wings-sanic is a lightweight python framework aimed at making it as simple as possible to document your Sanic API with Swagger UI, Plus param validation and model serialization.',
       author='SongTao',
@@ -34,4 +34,5 @@ setup(name='wings-sanic',
           'Programming Language :: Python :: 3.6',
           'Programming Language :: Python :: 3.7',
       ],
+      include_package_data=True,
       )
