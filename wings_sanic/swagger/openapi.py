@@ -46,8 +46,8 @@ def build_spec(app, loop):
 
         methods = {}
         for _method, _handler in method_handlers:
-            metadata = _handler.metadata
-            if _method == 'OPTIONS' or metadata.swagger_exclude:
+            metadata = utils.get_value(_handler, 'metadata')
+            if _method == 'OPTIONS' or not metadata or metadata.swagger_exclude:
                 continue
             parameters = []
             # header

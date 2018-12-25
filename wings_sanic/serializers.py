@@ -667,7 +667,7 @@ class SerializerField(BaseField):
     def openapi_spec(self):
         return {
             "type": "object",
-            "schema": {'$ref': '#/definitions/{}'.format(self.serializer.__class__.__name__)},
+            '$ref': '#/definitions/{}'.format(self.serializer.__class__.__name__),
             **super().openapi_spec()
         }
 
