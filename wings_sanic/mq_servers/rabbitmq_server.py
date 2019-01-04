@@ -28,8 +28,8 @@ class Consumer:
         """
         if retry_count <= 0:
             return 0
-        if retry_count > 5:
-            return 60 * 1000
+        if retry_count > 7:
+            return 3 * 60 * 1000
         return (1 << retry_count) * 1000
 
     async def __publish_to_retry_queue(self, body, retried_count):
@@ -42,11 +42,11 @@ class Consumer:
     async def __on_message(self, channel, body, envelope, properties):
         encoding = properties.content_encoding or 'utf-8'
         content = body.decode(encoding)
+        retried_count = (properties.headers or {}).get('x-retry-count', 0)
+        retried_count = retried_count if retried_count >= 0 else 0
         try:
-            await self.handler(content)
+            await self.handler(content, retried_count)
         except:
-            retried_count = (properties.headers or {}).get('x-retry-count', 0)
-            retried_count = retried_count if retried_count >= 0 else 0
             if self.max_retry < 0 or retried_count < self.max_retry:
                 self.mq_server.loop.create_task(self.__publish_to_retry_queue(body, retried_count))
         finally:

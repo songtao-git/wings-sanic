@@ -71,7 +71,7 @@ def handler(event_name, mq_server='default', msg_type=DomainEvent, timeout=None,
 
     def decorator(func):
         @wraps(func)
-        async def wrapper(content):
+        async def wrapper(content, retried_count):
             server = __get_mq_server(mq_server)
             data = utils.instance_from_json(content)
             ctx = utils.get_value(data, 'context', {})
@@ -80,7 +80,7 @@ def handler(event_name, mq_server='default', msg_type=DomainEvent, timeout=None,
             context_var.set(ctx)
 
             message = utils.get_value(data, 'message', data)
-            message = utils.instance_from_json(message)
+            message = utils.instance_from_json(message, cls=msg_type)
             try:
                 if asyncio.iscoroutinefunction(func):
                     fu = asyncio.ensure_future(func(message), loop=server.loop)
@@ -89,9 +89,12 @@ def handler(event_name, mq_server='default', msg_type=DomainEvent, timeout=None,
                     fu = server.loop.run_in_executor(None, context.run, func, message)
                 await asyncio.wait_for(fu, timeout, loop=server.loop)
                 commit_events()
-                logger.info(f'handle message success. event_name:{event_name}, handler:{utils.meth_str(func)}')
+                logger.info(
+                    f'handle message success. event_name:{event_name}, handler:{utils.meth_str(func)}, '
+                    f'retried_count: {retried_count}')
             except Exception as ex:
-                error_info = f"event_name: {event_name}, handler: {utils.meth_str(func)}, messages: \n{message}"
+                error_info = f"event_name: {event_name}, handler: {utils.meth_str(func)}, " \
+                             f"retried_count: {retried_count}, messages: \n{message}"
                 logger.error(error_info, exc_info=ex)
                 raise ex
             finally:
@@ -101,7 +104,8 @@ def handler(event_name, mq_server='default', msg_type=DomainEvent, timeout=None,
         handlers_cur = registry.get(mq_server, 'event_handlers') or set()
         handlers_cur.add((event_name, wrapper, max_retry))
         registry.set(mq_server, handlers_cur, 'event_handlers')
-        return wrapper
+
+        return func
 
     return decorator
 
