@@ -6,7 +6,7 @@ The wings-sanic is a lightweight python framework aimed at making it as simple a
 
 
 ## What is wings-sanic
-The wings-sanic(required `Python3.5+`) is lightweight python framework for [sainc](https://sanic.readthedocs.io/). This framework provides:
+The wings-sanic(required `Python3.7+`) is lightweight python framework for [sainc](https://sanic.readthedocs.io/). This framework provides:
 
 - declarative generation of http handler interfaces by parsing function annotations
 - validation and serialization to and from a json.
