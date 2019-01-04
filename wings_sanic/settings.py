@@ -51,8 +51,10 @@ DEFAULTS = {
     'DEBUG': False,
 
     'BLUEPRINTS': [],
-    'DEFAULT_CONTEXT': {},
-    'RESPONSE_SHAPE': 'wings_sanic.views.ResponseShapeCodeDataMsg',
+    'DEFAULT_CONTEXT': {
+        'response_shape': 'wings_sanic.views.ResponseShape',
+        'serialize_when_none': True
+    },
     'EXCEPTION_HANDLER': 'wings_sanic.views.exception_handler',
 
     'SWAGGER': {
@@ -70,6 +72,16 @@ DEFAULTS = {
             }
         },
         'schemes': ['http']
+    },
+    'MQ_SERVERS': {
+        # 'default': {
+        #     'server': 'wings_sanic.events.rabbitmq_server.MqServer',
+        #     'url': 'amqp://guest:guest@127.0.0.1:5672',
+        #     'exchange': '',
+        #     'reconnect_delay': 5.0,
+        #     'handler_timeout': 10,
+        #     'max_retry': -1
+        # }
     }
 }
 

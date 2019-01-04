@@ -1,7 +1,7 @@
 import json
 import os
 
-from wings_sanic import application, settings, views
+from wings_sanic import application, settings
 
 # -----------  dev settings -------------
 dev_settings = {
@@ -10,7 +10,8 @@ dev_settings = {
     ],
 
     'DEFAULT_CONTEXT': {
-        'response_shape': views.ResponseShapeCodeDataMsg
+        'response_shape': 'wings_sanic.views.ResponseShapeCodeDataMsg',
+        'serialize_when_none': False
     },
 
     'SWAGGER': {

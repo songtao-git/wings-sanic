@@ -1,10 +1,8 @@
 # coding: utf-8
 import asyncio
+import contextvars
 import logging
 
-from wings_sanic.app import WingsSanic
-from wings_sanic.blueprints import WingsBluePrint
-from wings_sanic.serializers import *
 from wings_sanic import settings
 
 logger = logging.getLogger('wings_sanic')
@@ -85,3 +83,9 @@ class inspector:
 
 
 inspector = inspector()
+
+context_var = contextvars.ContextVar('context_var', default=None)
+
+from wings_sanic.app import WingsSanic
+from wings_sanic.blueprints import WingsBluePrint
+from wings_sanic.serializers import *

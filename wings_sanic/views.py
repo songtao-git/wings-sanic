@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 from sanic.response import json, BaseHTTPResponse
 
-from wings_sanic import utils, serializers, settings
+from wings_sanic import utils, serializers, context_var
 
 
 class ResponseShape:
@@ -78,8 +78,7 @@ def get_response_shape(context=None):
 
 
 def exception_handler(request, exception):
-    context = {k: v for k, v in settings.get('DEFAULT_CONTEXT').items()}
-    response_shape = get_response_shape(context)
+    response_shape = get_response_shape(context_var.get())
 
     result = utils.get_value(exception, 'message', str(exception))
     code = utils.get_value(exception, 'status_code', 500)
@@ -96,7 +95,7 @@ async def extract_params(request, metadata):
     }
     # header
     if metadata.header_serializer:
-        params['header'] = metadata.header_serializer.validate(request.headers, metadata.context)
+        params['header'] = metadata.header_serializer.validate(request.headers, context_var.get())
         params.update(params['header'])
 
     # query
@@ -111,17 +110,17 @@ async def extract_params(request, metadata):
                         query_data[f_n].update(i.split(','))  # match `?a=b,c,d&a=d`
                 else:
                     query_data[f_n] = request.args[f_n][0]
-        params['query'] = metadata.query_serializer.validate(query_data, metadata.context)
+        params['query'] = metadata.query_serializer.validate(query_data, context_var.get())
         params.update(params['query'])
 
     # path
     if metadata.path_serializer:
-        params['path'] = metadata.path_serializer.validate(request.match_info, metadata.context)
+        params['path'] = metadata.path_serializer.validate(request.match_info, context_var.get())
         params.update(params['path'])
 
     # body
     if metadata.body_serializer:
-        params['body'] = metadata.body_serializer.validate(request.json, metadata.context)
+        params['body'] = metadata.body_serializer.validate(request.json, context_var.get())
 
     return params
 
@@ -129,11 +128,6 @@ async def extract_params(request, metadata):
 async def process_result(result, metadata):
     """
     process a result:
-
-    transmute_func: the transmute_func function that returned the response.
-
-    context: the transmute_context to use.
-
     result: the return value of the function, which will be serialized and
             returned back in the API.
     """
@@ -142,11 +136,11 @@ async def process_result(result, metadata):
         return result
 
     if metadata.response_serializer:
-        result = metadata.response_serializer.to_primitive(result, metadata.context)
+        result = metadata.response_serializer.to_primitive(result, context_var.get())
     else:
         result = utils.to_primitive(result)
 
-    response_shape = get_response_shape(metadata.context)
+    response_shape = get_response_shape(context_var.get())
 
     result, code = response_shape.create_body(result, metadata.success_code)
 

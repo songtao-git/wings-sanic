@@ -3,13 +3,14 @@
 import asyncio
 import logging
 import logging.config
+import uuid
 
 import uvloop
 from sanic.exceptions import NotFound
 from sanic.response import redirect
 from sanic_cors import CORS
 
-from wings_sanic import settings, utils, serializers, registry, inspector
+from wings_sanic import settings, utils, serializers, registry, inspector, context_var
 from wings_sanic.app import WingsSanic
 from wings_sanic.swagger import swagger_blueprint
 
@@ -45,6 +46,17 @@ def start():
         bp = utils.import_from_str(bp_str)
         app.blueprint(bp)
 
+    @app.middleware('request')
+    def init_context(request):
+        context_var.set({
+            'trace_id': request.headers.get('X-TRACE-ID', '') or str(uuid.uuid4().hex),
+            'messages': []
+        })
+
+    @app.middleware('response')
+    def reset_context(request, response):
+        context_var.set(None)
+
     @app.middleware('response')
     def log_response(request, response):
         logger = logging.getLogger('wings_sanic')
@@ -52,7 +64,7 @@ def start():
         request_url = '{0} {1}'.format(request.method, full_path)
         extra = {
             'remote_ip': request.remote_addr,
-            'request_uri': request_url
+            'request_uri': request_url,
         }
 
         exception = getattr(response, 'exception', None)

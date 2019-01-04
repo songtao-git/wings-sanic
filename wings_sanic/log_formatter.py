@@ -6,7 +6,7 @@ import socket
 import sys
 from collections import OrderedDict
 
-from . import datetime_helper, settings
+from . import datetime_helper, settings, context_var
 
 
 class JsonFormatter(logging.Formatter):
@@ -44,7 +44,7 @@ class JsonFormatter(logging.Formatter):
             ('project_name', settings.get('PROJECT_NAME')),
             ('project_version', settings.get('PROJECT_VERSION')),
             ("request_uri", getattr(record, 'request_uri', "")),
-            ("trace_id", getattr(record, 'trace_id', "")),  # todo 通过thread获取trace_id?
+            ("trace_id", (context_var.get() or {}).get('trace_id', '')),
             ("remote_ip", getattr(record, 'remote_ip', "")),
             ("local_ip", socket.gethostbyname(socket.gethostname())),
             ("logger_name", record.name),
