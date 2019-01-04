@@ -13,6 +13,7 @@ from sanic_cors import CORS
 from wings_sanic import settings, utils, serializers, registry, inspector, context_var, event
 from wings_sanic.app import WingsSanic
 from wings_sanic.swagger import swagger_blueprint
+from wings_sanic.mq_server import BaseMqServer
 
 app = WingsSanic()
 registry.set('app', app)
@@ -110,6 +111,9 @@ def start():
         # init and start mq_server
         for server_name, params in settings.get('MQ_SERVERS').items():
             server_cls = utils.import_from_str(params.pop('server'))
+            if not issubclass(server_cls, BaseMqServer):
+                raise Exception(
+                    f'{utils.cls_str_of_cls(server_cls)} is not subclass of {utils.cls_str_of_cls(BaseMqServer)}')
             server = server_cls(loop=loop, **params)
             registry.set(server_name, server, 'mq_servers')
             loop.create_task(server.start())

@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
 import asyncio
-import json
 import logging
 
 import aioamqp
@@ -8,6 +7,7 @@ import aioamqp.properties
 import aioamqp.protocol
 
 from wings_sanic import utils
+from wings_sanic.mq_server import BaseMqServer
 
 logger = logging.getLogger(__name__)
 
@@ -59,7 +59,7 @@ class Consumer:
         await self.channel.basic_consume(self.__on_message, self.queue)
 
 
-class MqServer:
+class MqServer(BaseMqServer):
     def __init__(self, url, exchange, exchange_type='topic', reconnect_delay=5.0, loop=None, **kwargs):
         self.url = url
         self.work_exchange = exchange

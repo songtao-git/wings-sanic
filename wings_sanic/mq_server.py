@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 
-class MqServer:
+
+class BaseMqServer:
     async def start(self):
         raise NotImplementedError
 
