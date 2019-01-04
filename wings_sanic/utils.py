@@ -2,6 +2,7 @@
 import datetime
 import decimal
 import inspect
+import json
 from typing import Sequence, Mapping
 
 from wings_sanic import datetime_helper
@@ -23,6 +24,44 @@ def instance_to_dict(instance):
             continue
         data[k] = v
     return data
+
+
+def instance_from_json(data, cls=None):
+    """
+    如果cls有值, 则将data_string转化成对应的instance(s)
+    否则，转化成python内置类型
+    转化失败时：
+        如果cls是None, 则返回原字符串
+        否则，返回None
+    :param data: json结构的字符串
+    :param cls: type of class
+    :return: 
+    """
+    if isinstance(data, str):
+        try:
+            data = json.loads(data)
+        except:
+            pass
+    data = to_native(data)
+
+    if not cls:
+        return data
+
+    if isinstance(data, Mapping):
+        try:
+            return cls(**data)
+        except:
+            return None
+
+    if isinstance(data, Sequence) and not isinstance(data, str):
+        result = []
+        for i in data:
+            item_result = instance_from_json(i)
+            if item_result:
+                result.append(item_result)
+        return result or None
+
+    return None
 
 
 def to_native(obj):

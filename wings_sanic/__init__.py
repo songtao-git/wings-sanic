@@ -25,6 +25,11 @@ class registry:
         val = self._data.get(group, {}).get(k, None)
         return val
 
+    def get_group(self, group=None):
+        if not group:
+            group = '__default'
+        return self._data.get(group, {})
+
 
 registry = registry()
 
@@ -84,6 +89,7 @@ class inspector:
 
 inspector = inspector()
 
+# 当前上下文
 context_var = contextvars.ContextVar('context_var', default=None)
 
 from wings_sanic.app import WingsSanic

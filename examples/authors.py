@@ -1,10 +1,19 @@
 import wings_sanic
-from wings_sanic import application, settings
+from wings_sanic import application, settings, event, utils
 
 # -----------  user settings -------------
 dev_settings = {
     'DEFAULT_CONTEXT': {
         'response_shape': 'wings_sanic.views.ResponseShapeCodeDataMsg'
+    },
+
+    'MQ_SERVERS': {
+        'default': {
+            'server': 'wings_sanic.mq_servers.rabbitmq_server.MqServer',
+            'url': 'amqp://test:123456@172.16.6.15:5672',
+            'exchange': 'songtao',
+            'reconnect_delay': 5.0
+        }
     },
 
     'SWAGGER': {
@@ -16,7 +25,7 @@ dev_settings = {
     },
     'HTTP_PORT': 8080,
     'DEBUG': True,
-    'DEV': True,
+    # 'DEV': True,
     'CORS': True
 }
 settings.load(**dev_settings)
@@ -59,6 +68,7 @@ async def create_author(request, body, *args, **kwargs):
     author_id = get_author_id()
     body['id'] = author_id
     authors_db[author_id] = body
+    await event.publish(event.DomainEvent('AuthorCreated', **body))
     return body
 
 
@@ -70,6 +80,11 @@ async def author_detail(request, author_id, *args, **kwargs):
     获取指定id的author详情
     """
     return authors_db.get(author_id, None)
+
+
+@event.handler('AuthorCreated')
+async def handle_author_created(evt):
+    print(utils.to_primitive(evt))
 
 
 # --------------------- main -----------------

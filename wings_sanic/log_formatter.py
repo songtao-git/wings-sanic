@@ -19,25 +19,26 @@ class JsonFormatter(logging.Formatter):
             s = s + record.exc_text
 
         # 计算method_name
+        method_name = ''
         cls_name = ''
         func_name = record.funcName
         count = 40
         f = sys._getframe()
-        while f.f_code.co_name != func_name and count > 0:
+        while f and  f.f_code.co_name != func_name and count > 0:
             f = f.f_back
             count -= 1
-        func_frame = f if f.f_code.co_name == func_name else None
-        caller = func_frame.f_locals.get('self', None) if func_frame else None
-
-        try:
-            if caller:
-                if not hasattr(caller, '__name__'):
-                    caller = caller.__class__
-                cls_name = '%s.%s' % (caller.__module__, caller.__name__)
-        except:
-            pass
-        finally:
-            method_name = '{cls_name}.{func_name}'.format(cls_name=cls_name, func_name=func_name)
+        if f:
+            func_frame = f if f.f_code.co_name == func_name else None
+            caller = func_frame.f_locals.get('self', None) if func_frame else None
+            try:
+                if caller:
+                    if not hasattr(caller, '__name__'):
+                        caller = caller.__class__
+                    cls_name = '%s.%s' % (caller.__module__, caller.__name__)
+            except:
+                pass
+            finally:
+                method_name = '{cls_name}.{func_name}'.format(cls_name=cls_name, func_name=func_name)
         msg = OrderedDict((
             ('@timestamp', datetime_helper.get_time_str()),
             ('level', record.levelname),

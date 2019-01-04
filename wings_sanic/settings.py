@@ -77,12 +77,20 @@ DEFAULTS = {
         # 'default': {
         #     'server': 'wings_sanic.events.rabbitmq_server.MqServer',
         #     'url': 'amqp://guest:guest@127.0.0.1:5672',
-        #     'exchange': '',
-        #     'reconnect_delay': 5.0,
-        #     'handler_timeout': 10,
-        #     'max_retry': -1
+        #     'exchange': 'test',
+        #     'exchange_type': 'topic',
+        #     'reconnect_delay': 5.0
         # }
-    }
+    },
+    'EVENT_HANDLE_TIMEOUT': 10,
+    'EVENT_MAX_RETRY': -1,
+
+    # rpc， mq传递上下文信息时忽略的key
+    'IGNORE_CONTEXT_WHEN_DELIVERY':[
+        'messages',
+        'response_shape',
+        'serialize_when_none'
+    ]
 }
 
 

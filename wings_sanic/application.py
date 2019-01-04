@@ -10,7 +10,7 @@ from sanic.exceptions import NotFound
 from sanic.response import redirect
 from sanic_cors import CORS
 
-from wings_sanic import settings, utils, serializers, registry, inspector, context_var
+from wings_sanic import settings, utils, serializers, registry, inspector, context_var, event
 from wings_sanic.app import WingsSanic
 from wings_sanic.swagger import swagger_blueprint
 
@@ -55,6 +55,9 @@ def start():
 
     @app.middleware('response')
     def reset_context(request, response):
+        exception = getattr(response, 'exception', None)
+        if not exception:
+            event.commit_events()
         context_var.set(None)
 
     @app.middleware('response')
@@ -101,6 +104,23 @@ def start():
     async def inspector_start_working(sanic, loop):
         registry.set('event_loop', loop)
         loop.call_soon(inspector.start)
+
+    @app.listener('after_server_start')
+    async def start_mq_servers(sanic, loop):
+        # init and start mq_server
+        for server_name, params in settings.get('MQ_SERVERS').items():
+            server_cls = utils.import_from_str(params.pop('server'))
+            server = server_cls(loop=loop, **params)
+            registry.set(server_name, server, 'mq_servers')
+            loop.create_task(server.start())
+
+        # subscribe handlers
+        for server_name, handlers in registry.get_group('event_handlers').items():
+            server = registry.get(server_name, 'mq_servers')
+            if not server:
+                raise Exception(f'cannot find named "{server_name}" mq_server')
+            for event_name, handler, max_retry in handlers:
+                await server.subscribe(routing_key=event_name, handler=handler, max_retry=max_retry)
 
     app.run(host="0.0.0.0", port=settings.get('HTTP_PORT'), workers=settings.get('WORKERS'),
             debug=settings.get('DEBUG'), access_log=settings.get('DEV'))
