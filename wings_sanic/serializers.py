@@ -257,7 +257,7 @@ class BaseField(metaclass=FieldMeta):
         spec = {
             'required': self.required,
             'name': self.name,
-            'description': self.help_text or self.label,
+            'description': ':'.join([i for i in [self.label, self.help_text] if i]),
         }
         if self.choices:
             spec['enum'] = self.choices
