@@ -12,11 +12,56 @@ from sanic_cors import CORS
 
 from wings_sanic import settings, utils, serializers, registry, inspector, context_var, event
 from wings_sanic.app import WingsSanic
-from wings_sanic.swagger import swagger_blueprint
 from wings_sanic.mq_server import BaseMqServer
+from wings_sanic.swagger import swagger_blueprint
 
 app = WingsSanic()
 registry.set('app', app)
+
+
+@app.middleware('request')
+def init_context(request):
+    context_var.set({
+        'trace_id': request.headers.get('X-TRACE-ID', '') or str(uuid.uuid4().hex),
+        'messages': []
+    })
+
+
+@app.middleware('response')
+def reset_context(request, response):
+    exception = getattr(response, 'exception', None)
+    if not exception:
+        event.commit_events()
+    context_var.set(None)
+
+
+@app.middleware('response')
+def log_response(request, response):
+    logger = logging.getLogger('wings_sanic')
+    full_path = request.path + ('?%s' % request.query_string if request.query_string else '')
+    request_url = '{0} {1}'.format(request.method, full_path)
+    extra = {
+        'remote_ip': request.remote_addr,
+        'request_uri': request_url,
+    }
+
+    exception = getattr(response, 'exception', None)
+
+    if exception:
+        message = "request_url: {request_url}" \
+                  "\nrequest_body: {body}" \
+                  "\nstatus_code: {status_code}" \
+                  "\nresponse_content: {response}" \
+            .format(request_url=request_url, body=request.body,
+                    response=response.body, status_code=response.status)
+        if getattr(exception, 'code', 500) / 100 == 5:
+            logger.error(message, extra=extra, exc_info=exception, stack_info=True)
+        else:
+            logger.warning(message, extra=extra, exc_info=exception)
+    # 正常请求，记录少量信息
+    else:
+        message = '%s %s' % (request_url, response.status)
+        logger.info(message, extra=extra)
 
 
 def start():
@@ -46,48 +91,6 @@ def start():
     for bp_str in settings.get('BLUEPRINTS'):
         bp = utils.import_from_str(bp_str)
         app.blueprint(bp)
-
-    @app.middleware('request')
-    def init_context(request):
-        context_var.set({
-            'trace_id': request.headers.get('X-TRACE-ID', '') or str(uuid.uuid4().hex),
-            'messages': []
-        })
-
-    @app.middleware('response')
-    def reset_context(request, response):
-        exception = getattr(response, 'exception', None)
-        if not exception:
-            event.commit_events()
-        context_var.set(None)
-
-    @app.middleware('response')
-    def log_response(request, response):
-        logger = logging.getLogger('wings_sanic')
-        full_path = request.path + ('?%s' % request.query_string if request.query_string else '')
-        request_url = '{0} {1}'.format(request.method, full_path)
-        extra = {
-            'remote_ip': request.remote_addr,
-            'request_uri': request_url,
-        }
-
-        exception = getattr(response, 'exception', None)
-
-        if exception:
-            message = "request_url: {request_url}" \
-                      "\nrequest_body: {body}" \
-                      "\nstatus_code: {status_code}" \
-                      "\nresponse_content: {response}" \
-                .format(request_url=request_url, body=request.body,
-                        response=response.body, status_code=response.status)
-            if getattr(exception, 'code', 500) / 100 == 5:
-                logger.error(message, extra=extra, exc_info=exception, stack_info=True)
-            else:
-                logger.warning(message, extra=extra, exc_info=exception)
-        # 正常请求，记录少量信息
-        else:
-            message = '%s %s' % (request_url, response.status)
-            logger.info(message, extra=extra)
 
     @app.exception(Exception)
     def handle_exception(request, exception):

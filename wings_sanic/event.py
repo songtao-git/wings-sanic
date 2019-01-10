@@ -27,14 +27,14 @@ def __get_mq_server(server_name):
     return server
 
 
-async def publish(event, mq_server='default', send_after_done=True):
+async def publish(event: DomainEvent, mq_server='default', send_after_done=True):
     """
     发送事件
     """
     await publish_message(event.event_name, event, mq_server, send_after_done)
 
 
-async def publish_message(routing_key, message, mq_server='default', send_after_done=True):
+async def publish_message(routing_key: str, message, mq_server='default', send_after_done=True):
     """
     发送消息
     """

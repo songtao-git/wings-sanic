@@ -29,7 +29,7 @@ dev_settings = {
     },
     'MQ_SERVERS': {
         # 'default': {
-        #     'server': 'wings_sanic.events.rabbitmq_server.MqServer',
+        #     'server': 'wings_sanic.mq_servers.rabbitmq_server.MqServer',
         #     'url': 'amqp://guest:guest@127.0.0.1:5672',
         #     'exchange': '',
         #     'reconnect_delay': 5.0,
