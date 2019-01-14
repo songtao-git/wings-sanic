@@ -12,8 +12,7 @@ class HandlerMetaData:
             return None
         if isinstance(params, serializers.BaseSerializer):
             return params
-        assert isinstance(params, dict)
-        return serializers.Serializer(fields=params)
+        return serializers.serializer_from(params)
 
     def __init__(
             self,
@@ -38,8 +37,6 @@ class HandlerMetaData:
         self.header_serializer = self.sure_serializer(header_params)
 
         self.body_serializer = self.sure_serializer(body_serializer)
-        if self.body_serializer and self.body_serializer.__class__ == serializers.Serializer:
-            raise TypeError('class of body_serializer should be subclass of Serializer, not Serializer itself')
 
         self.response_serializer = self.sure_serializer(response_serializer)
         self.context = context

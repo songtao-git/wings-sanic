@@ -154,16 +154,16 @@ class BaseField(metaclass=FieldMeta):
         'choices': "{0}是{1}其中之一.",
     }
 
-    def __init__(self, label, help_text=None, required=False,
+    def __init__(self, label=None, help_text=None, required=False,
                  default=Undefined, choices=None, validators=None,
                  serialize_when_none=True, messages=None, read_only=None, write_only=None):
         assert not (required and default is not Undefined), 'May not set both `required` and `default`'
         assert not (read_only and write_only), 'May not set both `read_only` and `write_only`'
 
         super().__init__()
-        if not label or not isinstance(label, str):
-            raise ValueError('label must be a effective string')
-        self.label = label
+        # if not label or not isinstance(label, str):
+        #     raise ValueError('label must be a effective string')
+        self._label = label
         self.help_text = help_text
         self.required = required
         self._default = default
@@ -203,8 +203,8 @@ class BaseField(metaclass=FieldMeta):
         self.owner_serializer = owner_serializer
 
     @property
-    def label_sequence(self):
-        return None
+    def label(self):
+        return self._label or self.name
 
     @property
     def default(self):
@@ -305,7 +305,7 @@ class StringField(BaseField):
         'regex': "{0}的值格式有误",
     }
 
-    def __init__(self, label, regex=None, max_length=None, min_length=None, **kwargs):
+    def __init__(self, label=None, regex=None, max_length=None, min_length=None, **kwargs):
         self.regex = re.compile(regex) if regex else None
         self.max_length = max_length
         self.min_length = min_length
@@ -355,7 +355,7 @@ class NumberField(BaseField):
         'number_max': "{0}的值应小于等于{1}",
     }
 
-    def __init__(self, label, min_value=None, max_value=None, strict=False, **kwargs):
+    def __init__(self, label=None, min_value=None, max_value=None, strict=False, **kwargs):
         self.min_value = min_value
         self.max_value = max_value
         self.strict = strict
@@ -641,7 +641,7 @@ class SerializerField(BaseField):
     native_type = dict
     is_composition = True
 
-    def __init__(self, label, serializer, **kwargs):
+    def __init__(self, label=None, serializer=None, **kwargs):
         assert 'default' not in kwargs, 'SerializerField cannot set default'
         if not isinstance(serializer, Serializer):
             raise TypeError('serializer must be instance of Serializer')
@@ -686,7 +686,7 @@ class ListField(BaseField):
     native_type = list
     is_composition = True
 
-    def __init__(self, label, field, min_size=None, max_size=None, **kwargs):
+    def __init__(self, label=None, field=None, min_size=None, max_size=None, **kwargs):
         if not isinstance(field, BaseField):
             raise TypeError('field must be instance of BaseField')
         self.field = field
@@ -847,21 +847,13 @@ class SerializerMeta(type):
 class BaseSerializer(metaclass=SerializerMeta):
     """
     Base class for Serializer
-    :param dict fields:
-        KeyValuePair(field_name: str, field: BaseField), the `fields` and
-        serializer's declared fields will compose final `fields`.
     :param validators:
         A list of callables. Each callable receives the value after it has been
         converted into a rich python type. Default: []
     """
 
-    def __init__(self, fields=None, validators=None):
+    def __init__(self, validators=None):
         self.fields = OrderedDict(self._fields)
-        if fields:
-            for field_name, field in fields.items():
-                assert isinstance(field, BaseField), 'field must be instance of BaseField.'
-                field._setup(field_name, self.__class__)
-                self.fields[field_name] = field
         self.validators = [getattr(self, validator_name) for validator_name in self._validators]
         if validators:
             self.validators += list(validators)
@@ -883,6 +875,34 @@ class BaseSerializer(metaclass=SerializerMeta):
 
     def openapi_spec(self):
         raise NotImplementedError
+
+
+def field_from(data):
+    if isinstance(data, BaseField):
+        return data
+    if isinstance(data, BaseSerializer):
+        return SerializerField(serializer=data)
+    if isinstance(data, dict):
+        return SerializerField(serializer=serializer_from(data))
+    if isinstance(data, list):
+        assert len(data) == 1
+        return ListField(field=field_from(data[0]))
+
+
+def serializer_from(data):
+    assert not isinstance(data, BaseField)
+    if isinstance(data, BaseSerializer):
+        return data
+    if isinstance(data, dict):
+        serializer = Serializer()
+        for field_name, field in data.items():
+            field = field_from(field)
+            field._setup(field_name, serializer.__class__)
+            serializer.fields[field_name] = field
+        return serializer
+    if isinstance(data, list):
+        assert len(data) == 1
+        return ListSerializer(child=serializer_from(data[0]))
 
 
 class Serializer(BaseSerializer):
