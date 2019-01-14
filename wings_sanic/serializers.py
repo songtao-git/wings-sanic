@@ -665,11 +665,9 @@ class SerializerField(BaseField):
         return self.serializer.to_primitive(value, context) if value is not None else None
 
     def openapi_spec(self):
-        return {
-            "type": "object",
-            '$ref': '#/definitions/{}'.format(self.serializer.__class__.__name__),
-            **super().openapi_spec()
-        }
+        res = self.serializer.openapi_spec()
+        res.update(super().openapi_spec())
+        return res
 
 
 class ListField(BaseField):
@@ -895,8 +893,8 @@ def serializer_from(data):
         return data
     if isinstance(data, dict):
         serializer = Serializer()
-        for field_name, field in data.items():
-            field = field_from(field)
+        for field_name, field_data in data.items():
+            field = field_from(field_data)
             field._setup(field_name, serializer.__class__)
             serializer.fields[field_name] = field
         return serializer
@@ -1000,6 +998,7 @@ class Serializer(BaseSerializer):
     def openapi_spec(self):
         if self.__class__ != Serializer:
             return {
+                "type": "object",
                 "$ref": "#/definitions/{}".format(self.__class__.__name__),
             }
         return {
