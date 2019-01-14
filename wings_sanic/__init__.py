@@ -69,22 +69,30 @@ class inspector:
             if task['times'] > 0:
                 task['times'] -= 1
 
-    def register(self, func, *args, interval: int = 3, times: int = -1):
+    def register(self, *args, interval=3, times=-1, func=None):
         """ 注册一个任务, 并制定间隔时间执行
-        :param func 执行的函数
+        :param args 执行的函数时传入的参数列表
+        :param func 执行的函数(可以通过装饰器添加)
         :param interval 间隔时间, 单位秒
         :param  times 重复执行次数, <0时一直重复, =0时不重复
         """
-        assert isinstance(interval, int), 'interval should be integer'
-        assert isinstance(times, int), 'times should be integer'
-
-        t = {
-            'func': func,
-            'args': args,
-            'interval': interval,
-            'times': times
-        }
-        self.tasks.append(t)
+        if func:
+            self.tasks.append({
+                'func': func,
+                'args': args,
+                'interval': interval,
+                'times': times
+            })
+        else:
+            def decorator(func_wrapped):
+                self.tasks.append({
+                    'func': func_wrapped,
+                    'args': args,
+                    'interval': interval,
+                    'times': times
+                })
+                return func
+            return decorator
 
 
 inspector = inspector()
