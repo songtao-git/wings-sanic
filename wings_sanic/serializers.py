@@ -713,7 +713,9 @@ class ListField(BaseField):
         data = []
         for index, item in enumerate(value):
             try:
-                data.append(self.field.to_native(item, context))
+                item_data = self.field.to_native(item, context)
+                if item_data:
+                    data.append(item_data)
             except exceptions.SanicException as exc:
                 raise exceptions.InvalidUsage('{0}的第{1}值有误:{2}'.format(self.label, index + 1, exc))
         return data
@@ -725,7 +727,9 @@ class ListField(BaseField):
         data = []
         for index, item in enumerate(value):
             try:
-                data.append(self.field.to_primitive(item, context))
+                item_data = self.field.to_primitive(item, context)
+                if item_data:
+                    data.append(item_data)
             except exceptions.SanicException as exc:
                 raise exceptions.InvalidUsage('{0}的第{1}值有误:{2}'.format(self.label, index, exc))
         return data
@@ -737,7 +741,9 @@ class ListField(BaseField):
             data = []
             for index, item in enumerate(value):
                 try:
-                    data.append(self.field.validate(item, context))
+                    item_data = self.field.validate(item, context)
+                    if item_data:
+                        data.append(item_data)
                 except exceptions.SanicException as exc:
                     raise exceptions.InvalidUsage('{0}的第{1}个值有误:{2}'.format(self.label, index, exc))
 
@@ -1034,7 +1040,7 @@ class ListSerializer(BaseSerializer):
     def to_native(self, data, context=None):
         if data is None or data is Undefined:
             return []
-        return [self.child.to_native(item, context) for item in self.ensure_sequence(data)]
+        return [self.child.to_native(item, context) for item in self.ensure_sequence(data) if self.child.to_native(item, context)]
 
     def to_primitive(self, data, context=None):
         data = self.to_native(data)
