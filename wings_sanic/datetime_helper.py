@@ -3,8 +3,9 @@
 import datetime
 import re
 
+
 ZERO_TIME_DELTA = datetime.timedelta(0)
-LOCAL_TIME_DELTA = datetime.timedelta(hours=8)  # 本地时区偏差
+LOCAL_TIME_DELTA = datetime.datetime.now() - datetime.datetime.utcnow()
 
 
 class UTC(datetime.tzinfo):
@@ -23,7 +24,10 @@ class LocalTimeZone(datetime.tzinfo):
         return ZERO_TIME_DELTA
 
     def tzname(self, dt):
-        return '+08:00'
+        total_seconds = round(LOCAL_TIME_DELTA.total_seconds())
+        hours = int(total_seconds/3600)
+        minutes = int((total_seconds - 3600 * hours)/60)
+        return '+%02d:%02d' % (hours, minutes)
 
 
 # singleton

@@ -95,8 +95,6 @@ DEFAULTS = {
 
 
 def load(**user_settings):
-    if not working_settings:
-        working_settings.update(DEFAULTS)
     working_settings.update(user_settings)
 
 
