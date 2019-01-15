@@ -65,15 +65,6 @@ def log_response(request, response):
         logger.info(message, extra=extra)
 
 
-@app.exception(Exception)
-def handle_exception(request, exception):
-    exception_handler = utils.import_from_str(settings.get('EXCEPTION_HANDLER'))
-    response = exception_handler(request, exception)
-    # set exception to response convenience for `log_response`
-    setattr(response, 'exception', exception)
-    return response
-
-
 def start():
     """
     before start application, you need load your user_settings 
@@ -101,6 +92,14 @@ def start():
     for bp_str in settings.get('BLUEPRINTS'):
         bp = utils.import_from_str(bp_str)
         app.blueprint(bp)
+
+    @app.exception(Exception)
+    def handle_exception(request, exception):
+        exception_handler = utils.import_from_str(settings.get('EXCEPTION_HANDLER'))
+        response = exception_handler(request, exception)
+        # set exception to response convenience for `log_response`
+        setattr(response, 'exception', exception)
+        return response
 
     @app.get('/ping/', response_serializer={'ping': serializers.StringField('Ping-Pong', required=True)})
     async def ping(request, *args, **kwargs):
