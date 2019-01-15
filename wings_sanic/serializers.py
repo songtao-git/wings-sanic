@@ -707,6 +707,8 @@ class ListField(BaseField):
         raise exceptions.InvalidUsage('{0}应是列表'.format(self.label))
 
     def _to_native(self, value, context=None):
+        if not value:
+            return []
         value = self._coerce(value)
         data = []
         for index, item in enumerate(value):
@@ -718,7 +720,7 @@ class ListField(BaseField):
 
     def to_primitive(self, value, context=None):
         if not value:
-            return None
+            return []
         value = self._coerce(value)
         data = []
         for index, item in enumerate(value):
@@ -729,7 +731,7 @@ class ListField(BaseField):
         return data
 
     def validate(self, value, context=None):
-        data = None
+        data = []
         if value:
             value = self._coerce(value)
             data = []
@@ -1031,18 +1033,18 @@ class ListSerializer(BaseSerializer):
 
     def to_native(self, data, context=None):
         if data is None or data is Undefined:
-            return None
+            return []
         return [self.child.to_native(item, context) for item in self.ensure_sequence(data)]
 
     def to_primitive(self, data, context=None):
         data = self.to_native(data)
-        if data is None:
-            return None
+        if not data:
+            return []
         return [self.child.to_primitive(item, context) for item in data]
 
     def validate(self, data, context=None):
         data = self.to_native(data)
-        if data is not None:
+        if data:
             validated_data = []
             for index, item in enumerate(data):
                 try:
