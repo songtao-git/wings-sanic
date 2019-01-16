@@ -69,14 +69,28 @@ def build_spec(app, loop):
                 parameters.append(parameter)
 
             # body
+            has_file_filed = False
             if metadata.body_serializer:
-                spec = metadata.body_serializer.openapi_spec()
-                parameters.append({
-                    'in': 'body',
-                    'name': 'body',
-                    'required': True,
-                    'schema': spec
-                })
+                body_spec = metadata.body_serializer.openapi_spec()
+                import wings_sanic
+                for _, f in metadata.body_serializer.fields.items():
+                    if isinstance(f, wings_sanic.FileField):
+                        has_file_filed = True
+                        break
+
+                if not has_file_filed:
+                    parameters.append({
+                        'in': 'body',
+                        'name': 'body',
+                        'required': True,
+                        'schema': body_spec
+                    })
+                else:
+                    for name, field_spec in body_spec['properties'].items():
+                        parameters.append({
+                            'in': 'formData',
+                            **field_spec
+                        })
 
             # response
             response_spec = None
@@ -91,7 +105,7 @@ def build_spec(app, loop):
                 'operationId': utils.meth_str(_handler),
                 'summary': summary,
                 'description': description,
-                'consumes': ['application/json'],
+                'consumes': ['multipart/form-data'] if has_file_filed else ['application/json'],
                 'produces': ['application/json'],
                 'tags': metadata.tags,
                 'parameters': parameters,

@@ -16,7 +16,7 @@ from . import datetime_helper, utils
 
 __all__ = ['UUIDField', 'StringField', 'NumberField', 'IntField', 'FloatField', 'DecimalField', 'BooleanField',
            'DateTimeField', 'DateField', 'TimestampField', 'EmailField', 'PhoneField', 'IDField', 'SerializerField',
-           'ListField', 'JsonField', 'Serializer', 'ListSerializer']
+           'ListField', 'JsonField', 'Serializer', 'ListSerializer', 'FileField']
 
 
 class Undefined:
@@ -635,6 +635,16 @@ class IDField(StringField):
             raise exceptions.InvalidUsage(self.messages['ID'].format(self.label, value))
 
 
+class FileField(BaseField):
+    """A field that validates input as a ID number.
+    """
+    def openapi_spec(self):
+        return {
+            'type': 'file',
+            **super().openapi_spec()
+        }
+
+
 class SerializerField(BaseField):
     """A field that can hold an instance of the specified model."""
     primitive_type = dict
@@ -1040,7 +1050,8 @@ class ListSerializer(BaseSerializer):
     def to_native(self, data, context=None):
         if data is None or data is Undefined:
             return []
-        return [self.child.to_native(item, context) for item in self.ensure_sequence(data) if self.child.to_native(item, context)]
+        return [self.child.to_native(item, context) for item in self.ensure_sequence(data) if
+                self.child.to_native(item, context)]
 
     def to_primitive(self, data, context=None):
         data = self.to_native(data)

@@ -25,7 +25,7 @@ dev_settings = {
     },
     'HTTP_PORT': 8080,
     'DEBUG': True,
-    # 'DEV': True,
+    'DEV': True,
     'CORS': True
 }
 settings.load(**dev_settings)
@@ -85,6 +85,20 @@ async def author_detail(request, author_id, *args, **kwargs):
 @event.handler('AuthorCreated')
 async def handle_author_created(evt):
     print(utils.to_primitive(evt))
+
+
+@authors.post('/<author_id>/',
+              path_params={'author_id': wings_sanic.IntField('作者Id')},
+             body_serializer={
+                 'head_image': wings_sanic.FileField('头像'),
+                 'description': wings_sanic.StringField('描述信息')
+             })
+async def upload_image(request, author_id,  body, *args, **kwargs):
+    """
+    上传作者头像
+    """
+    print(body)
+    return
 
 
 # --------------------- main -----------------

@@ -98,29 +98,40 @@ async def extract_params(request, metadata):
         params['header'] = metadata.header_serializer.validate(request.headers, context_var.get())
         params.update(params['header'])
 
+    def from_form_data(data, serializer):
+        result = {}
+        for name, field in serializer.fields.items():
+            if name in data:
+                if isinstance(field, serializers.ListField):
+                    result[name] = set()
+                    for i in data[name]:
+                        result[name].update(i.split(','))  # match `?a=b,c,d&a=d`
+                else:
+                    result[name] = data[name][0]
+        return result
+
     # query
     if metadata.query_serializer:
-        query_data = {}
         # only field declared in `query_params` is effective.
-        for f_n, f in metadata.query_serializer.fields.items():
-            if f_n in request.args:
-                if isinstance(f, serializers.ListField):
-                    query_data[f_n] = set()
-                    for i in request.args[f_n]:
-                        query_data[f_n].update(i.split(','))  # match `?a=b,c,d&a=d`
-                else:
-                    query_data[f_n] = request.args[f_n][0]
+        query_data = from_form_data(request.args, metadata.query_serializer)
         params['query'] = metadata.query_serializer.validate(query_data, context_var.get())
-        params.update(params['query'])
+        params.update(params['query'] or {})
 
     # path
     if metadata.path_serializer:
         params['path'] = metadata.path_serializer.validate(request.match_info, context_var.get())
-        params.update(params['path'])
+        params.update(params['path'] or {})
 
     # body
     if metadata.body_serializer:
-        params['body'] = metadata.body_serializer.validate(request.json, context_var.get())
+        if request.headers['content-type'] == 'application/json':
+            body_data = request.json
+        else:
+            body_data = from_form_data({
+                **request.form,
+                **request.files
+            }, metadata.body_serializer)
+        params['body'] = metadata.body_serializer.validate(body_data, context_var.get())
 
     return params
 
