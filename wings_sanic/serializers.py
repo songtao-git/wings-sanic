@@ -350,12 +350,12 @@ class NumberField(BaseField):
     native_type = None
     number_type = None
     MESSAGES = {
-        'number_coerce': "{0}的值{1}不能转化成{2}",
+        'number_coerce': "{0}的值{1}不是有效的{2}",
         'number_min': "{0}的值应大于等于{1}",
         'number_max': "{0}的值应小于等于{1}",
     }
 
-    def __init__(self, label=None, min_value=None, max_value=None, strict=False, **kwargs):
+    def __init__(self, label=None, min_value=None, max_value=None, strict=True, **kwargs):
         self.min_value = min_value
         self.max_value = max_value
         self.strict = strict
@@ -413,7 +413,7 @@ class FloatField(NumberField):
 
     primitive_type = float
     native_type = float
-    number_type = '小数'
+    number_type = '浮点数'
 
     def openapi_spec(self):
         return {

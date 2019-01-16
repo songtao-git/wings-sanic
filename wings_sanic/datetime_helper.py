@@ -135,6 +135,10 @@ def today():
     return datetime.date.today()
 
 
+def timestamp():
+    return now().timestamp()
+
+
 def get_time_str(dt: datetime.datetime = None, tz_default=LocalTimeZone):
     """
     :param dt: 为None时，返回当前时间
