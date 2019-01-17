@@ -64,65 +64,67 @@ DEFAULTS = {
 }
 
 
+def load(**user_settings):
+    working_settings.update(user_settings)
+    # default LOG(JsonFormatter) is useful for elk, but not friendly for develop debug.
+    # for convenience for develop, set True, then use sanic's log and its access_log is available
+    working_settings['LOGGING_CONFIG'] = working_settings.get('LOGGING_CONFIG', )
+
+
 def get(attr):
     try:
         # Check if present in user settings
         return working_settings[attr]
     except KeyError:
+        if attr == 'LOGGING_CONFIG':
+            return {
+                'version': 1,
+                'disable_existing_loggers': False,
+                'loggers': {
+                    "": {
+                        "level": get('LOG_LEVEL').get('other', 'WARNING'),
+                        "handlers": ["default"],
+                        'propagate': False,
+                    },
+                    'wings_sanic': {
+                        "level": get('LOG_LEVEL').get('wings_sanic', 'INFO'),
+                        "handlers": ["wings_sanic"],
+                        'propagate': False,
+                    },
+                    'project': {
+                        "level": get('LOG_LEVEL').get('project', 'INFO'),
+                        "handlers": ["project"],
+                        'propagate': False,
+                    }
+                },
+                'handlers': {
+                    "default": {
+                        "class": "logging.StreamHandler",
+                        "formatter": "json",
+                        "level": get('LOG_LEVEL').get('other', 'WARNING'),
+                    },
+                    "wings_sanic": {
+                        "class": "logging.StreamHandler",
+                        "formatter": "json",
+                        "level": get('LOG_LEVEL').get('wings_sanic', 'INFO'),
+                    },
+                    "project": {
+                        "class": "logging.StreamHandler",
+                        "formatter": "json",
+                        "level": get('LOG_LEVEL').get('project', 'INFO'),
+                    }
+                },
+                'formatters': {
+                    "json": get('DEV') and {
+                        "format": "%(asctime)s [%(process)d] [%(levelname)s] %(message)s",
+                        "datefmt": "[%Y-%m-%d %H:%M:%S %z]",
+                        "class": "logging.Formatter",
+                    } or {
+                                "class": "wings_sanic.log_formatter.JsonFormatter"
+                            }
+                }
+            }
         try:
             return DEFAULTS[attr]
         except KeyError:
             raise AttributeError("Invalid setting: '%s'" % attr)
-
-
-def load(**user_settings):
-    working_settings.update(user_settings)
-    # default LOG(JsonFormatter) is useful for elk, but not friendly for develop debug.
-    # for convenience for develop, set True, then use sanic's log and its access_log is available
-    working_settings['LOGGING_CONFIG'] = working_settings.get('LOGGING_CONFIG', {
-        'version': 1,
-        'disable_existing_loggers': False,
-        'loggers': {
-            "": {
-                "level": get('LOG_LEVEL').get('other', 'WARNING'),
-                "handlers": ["default"],
-                'propagate': False,
-            },
-            'wings_sanic': {
-                "level": get('LOG_LEVEL').get('wings_sanic', 'INFO'),
-                "handlers": ["wings_sanic"],
-                'propagate': False,
-            },
-            'project': {
-                "level": get('LOG_LEVEL').get('project', 'INFO'),
-                "handlers": ["project"],
-                'propagate': False,
-            }
-        },
-        'handlers': {
-            "default": {
-                "class": "logging.StreamHandler",
-                "formatter": "json",
-                "level": get('LOG_LEVEL').get('other', 'WARNING'),
-            },
-            "wings_sanic": {
-                "class": "logging.StreamHandler",
-                "formatter": "json",
-                "level": get('LOG_LEVEL').get('wings_sanic', 'INFO'),
-            },
-            "project": {
-                "class": "logging.StreamHandler",
-                "formatter": "json",
-                "level": get('LOG_LEVEL').get('project', 'INFO'),
-            }
-        },
-        'formatters': {
-            "json": get('DEV') and {
-                "format": "%(asctime)s [%(process)d] [%(levelname)s] %(message)s",
-                "datefmt": "[%Y-%m-%d %H:%M:%S %z]",
-                "class": "logging.Formatter",
-            } or {
-                        "class": "wings_sanic.log_formatter.JsonFormatter"
-                    }
-        }
-    })
