@@ -5,7 +5,8 @@ import logging
 
 from wings_sanic import settings
 
-logger = logging.getLogger('wings_sanic')
+wings_logger = logging.getLogger('wings_sanic')
+logger = logging.getLogger('project')
 
 
 class registry:
@@ -49,7 +50,7 @@ class inspector:
         loop = registry.get('event_loop') or asyncio.get_event_loop()
         report_interval = settings.get('INSPECTOR_REPORT_INTERVAL')
         if self._count % report_interval == 0:
-            logger.info('inspector working, count: %s', self._count)
+            wings_logger.info('inspector working, count: %s', self._count)
         loop.call_later(self._interval, self.start)
 
         self._count += 1
@@ -92,6 +93,7 @@ class inspector:
                     'times': times
                 })
                 return func
+
             return decorator
 
 

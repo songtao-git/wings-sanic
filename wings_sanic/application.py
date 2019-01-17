@@ -71,12 +71,10 @@ def start():
     by `wings_sanic.settings.load(**user_settings)`
     :return: 
     """
-    if not settings.get('DEV'):
-        logging.config.dictConfig(settings.get('LOG'))
+    logging.config.dictConfig(settings.get('LOGGING_CONFIG'))
 
     if settings.get('CORS'):
         CORS(app, automatic_options=True, supports_credentials=True)
-
     app.config.update(settings.working_settings)
 
     asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
@@ -130,5 +128,5 @@ def start():
             for event_name, handler, max_retry in handlers:
                 await server.subscribe(routing_key=event_name, handler=handler, max_retry=max_retry)
 
-    app.run(host="0.0.0.0", port=settings.get('HTTP_PORT'), workers=settings.get('WORKERS'),
-            debug=settings.get('DEBUG'), access_log=settings.get('DEV'))
+    app.run(host="0.0.0.0", port=settings.get('HTTP_PORT'),
+            workers=settings.get('WORKERS'), access_log=False)

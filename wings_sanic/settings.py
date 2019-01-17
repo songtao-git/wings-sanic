@@ -10,45 +10,15 @@ DEFAULTS = {
     'WORKERS': 1,
     'INSPECTOR_REPORT_INTERVAL': 30,
 
-    'LOG': {
-        'version': 1,
-        'disable_existing_loggers': False,
-        'loggers': {
-            "": {
-                "level": 'WARNING',
-                "handlers": ["default"],
-                'propagate': False,
-            },
-            'wings_sanic': {
-                "level": 'INFO',
-                "handlers": ["wings_sanic"],
-                'propagate': False,
-            }
-        },
-        'handlers': {
-            "default": {
-                "class": "logging.StreamHandler",
-                "formatter": "json",
-                "level": 'WARNING',
-            },
-            "wings_sanic": {
-                "class": "logging.StreamHandler",
-                "formatter": "json",
-                "level": 'INFO',
-            }
-        },
-        'formatters': {
-            "json": {
-                "class": "wings_sanic.log_formatter.JsonFormatter"
-            }
-        },
-    },
-
-    # default LOG(JsonFormatter) is useful for elk, but not friendly for develop debug.
-    # for convenience for develop, set True, then use sanic's log and its access_log is available
     'DEV': False,
     'CORS': False,
     'DEBUG': False,
+
+    'LOG_LEVEL': {
+        'other': 'WARNING',
+        'wings_sanic': 'INFO',
+        'project': 'INFO'
+    },
 
     'BLUEPRINTS': [],
     'DEFAULT_CONTEXT': {
@@ -86,16 +56,12 @@ DEFAULTS = {
     'EVENT_MAX_RETRY': -1,
 
     # rpc， mq传递上下文信息时忽略的key
-    'IGNORE_CONTEXT_WHEN_DELIVERY':[
+    'IGNORE_CONTEXT_WHEN_DELIVERY': [
         'messages',
         'response_shape',
         'serialize_when_none'
     ]
 }
-
-
-def load(**user_settings):
-    working_settings.update(user_settings)
 
 
 def get(attr):
@@ -107,3 +73,56 @@ def get(attr):
             return DEFAULTS[attr]
         except KeyError:
             raise AttributeError("Invalid setting: '%s'" % attr)
+
+
+def load(**user_settings):
+    working_settings.update(user_settings)
+    # default LOG(JsonFormatter) is useful for elk, but not friendly for develop debug.
+    # for convenience for develop, set True, then use sanic's log and its access_log is available
+    working_settings['LOGGING_CONFIG'] = working_settings.get('LOGGING_CONFIG', {
+        'version': 1,
+        'disable_existing_loggers': False,
+        'loggers': {
+            "": {
+                "level": get('LOG_LEVEL').get('other', 'WARNING'),
+                "handlers": ["default"],
+                'propagate': False,
+            },
+            'wings_sanic': {
+                "level": get('LOG_LEVEL').get('wings_sanic', 'INFO'),
+                "handlers": ["wings_sanic"],
+                'propagate': False,
+            },
+            'project': {
+                "level": get('LOG_LEVEL').get('project', 'INFO'),
+                "handlers": ["project"],
+                'propagate': False,
+            }
+        },
+        'handlers': {
+            "default": {
+                "class": "logging.StreamHandler",
+                "formatter": "json",
+                "level": get('LOG_LEVEL').get('other', 'WARNING'),
+            },
+            "wings_sanic": {
+                "class": "logging.StreamHandler",
+                "formatter": "json",
+                "level": get('LOG_LEVEL').get('wings_sanic', 'INFO'),
+            },
+            "project": {
+                "class": "logging.StreamHandler",
+                "formatter": "json",
+                "level": get('LOG_LEVEL').get('project', 'INFO'),
+            }
+        },
+        'formatters': {
+            "json": get('DEV') and {
+                "format": "%(asctime)s [%(process)d] [%(levelname)s] %(message)s",
+                "datefmt": "[%Y-%m-%d %H:%M:%S %z]",
+                "class": "logging.Formatter",
+            } or {
+                        "class": "wings_sanic.log_formatter.JsonFormatter"
+                    }
+        }
+    })
