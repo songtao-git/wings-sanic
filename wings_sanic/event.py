@@ -39,7 +39,7 @@ async def publish_message(routing_key: str, message, mq_server='default', send_a
     发送消息
     """
     ctx_delivery = {}
-    for k, v in context_var.get().items():
+    for k, v in (context_var.get() or {}).items():
         if k not in settings.get('IGNORE_CONTEXT_WHEN_DELIVERY'):
             ctx_delivery[k] = v
     body = {
@@ -48,10 +48,11 @@ async def publish_message(routing_key: str, message, mq_server='default', send_a
     }
     body = json.dumps(body)
     server = __get_mq_server(mq_server)
-    if send_after_done:
-        context_var.get()['messages'].append({'mq_server': server, 'body': body, 'routing_key': routing_key})
-    else:
+
+    if context_var.get() is None or not send_after_done:
         await server.publish(routing_key, body)
+    else:
+        context_var.get()['messages'].append({'mq_server': server, 'body': body, 'routing_key': routing_key})
 
 
 def handler(event_name, mq_server='default', msg_type=DomainEvent, timeout=None, max_retry=None):

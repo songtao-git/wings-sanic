@@ -2,11 +2,15 @@
 import asyncio
 import contextvars
 import logging
+import uuid
 
 from wings_sanic import settings
 
 wings_logger = logging.getLogger('wings_sanic')
 logger = logging.getLogger('project')
+
+# 当前上下文
+context_var = contextvars.ContextVar('context_var', default=None)
 
 
 class registry:
@@ -57,15 +61,29 @@ class inspector:
         if self._count > 9999999:
             self._count = 1
 
+        def done_callback(future):
+            from wings_sanic import event
+            if not future.exception():
+                event.commit_events()
+            context_var.set(None)
+
         for task in self.tasks:
             func = task['func']
             args = task['args']
             if self._count % task['interval'] != 0 or task['times'] == 0:
                 continue
+
+            context_var.set({
+                'trace_id': str(uuid.uuid4().hex),
+                'messages': []
+            })
+
             if asyncio.iscoroutinefunction(func):
-                loop.create_task(func(*args))
+                fu = asyncio.ensure_future(func(*args), loop=loop)
             else:
-                loop.call_soon(func, *args)
+                context = contextvars.copy_context()
+                fu = loop.run_in_executor(None, context.run, func, *args)
+            fu.add_done_callback(done_callback)
 
             if task['times'] > 0:
                 task['times'] -= 1
@@ -98,9 +116,6 @@ class inspector:
 
 
 inspector = inspector()
-
-# 当前上下文
-context_var = contextvars.ContextVar('context_var', default=None)
 
 from wings_sanic.app import WingsSanic
 from wings_sanic.blueprints import WingsBluePrint
