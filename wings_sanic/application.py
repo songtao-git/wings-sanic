@@ -55,7 +55,7 @@ def log_response(request, response):
                   "\nresponse_content: {response}" \
             .format(request_url=request_url, body=request.body,
                     response=response.body, status_code=response.status)
-        if getattr(exception, 'code', 500) / 100 == 5:
+        if getattr(exception, 'status_code', 500) / 100 == 5:
             logger.error(message, extra=extra, exc_info=exception, stack_info=True)
         else:
             logger.warning(message, extra=extra, exc_info=exception)
