@@ -24,7 +24,7 @@ class JsonFormatter(logging.Formatter):
         func_name = record.funcName
         count = 40
         f = sys._getframe()
-        while f and  f.f_code.co_name != func_name and count > 0:
+        while f and f.f_code.co_name != func_name and count > 0:
             f = f.f_back
             count -= 1
         if f:
@@ -45,6 +45,7 @@ class JsonFormatter(logging.Formatter):
             ('project_name', settings.get('PROJECT_NAME')),
             ('project_version', settings.get('PROJECT_VERSION')),
             ("request_uri", getattr(record, 'request_uri', "")),
+            ("spent", getattr(record, 'spent', None) or ""),
             ("trace_id", (context_var.get() or {}).get('trace_id', '')),
             ("remote_ip", getattr(record, 'remote_ip', "")),
             ("local_ip", socket.gethostbyname(socket.gethostname())),

@@ -59,7 +59,8 @@ DEFAULTS = {
     'IGNORE_CONTEXT_WHEN_DELIVERY': [
         'messages',
         'response_shape',
-        'serialize_when_none'
+        'serialize_when_none',
+        'request_at'
     ]
 }
 

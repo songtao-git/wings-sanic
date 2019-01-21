@@ -10,7 +10,7 @@ from sanic.exceptions import NotFound
 from sanic.response import redirect
 from sanic_cors import CORS
 
-from wings_sanic import settings, utils, serializers, registry, inspector, context_var, event
+from wings_sanic import settings, utils, serializers, registry, inspector, context_var, event, datetime_helper
 from wings_sanic.app import WingsSanic
 from wings_sanic.mq_server import BaseMqServer
 from wings_sanic.swagger import swagger_blueprint
@@ -23,7 +23,8 @@ registry.set('app', app)
 def init_context(request):
     context_var.set({
         'trace_id': request.headers.get('X-TRACE-ID', '') or str(uuid.uuid4().hex),
-        'messages': []
+        'messages': [],
+        'request_at': int(datetime_helper.timestamp() * 1000)
     })
     context_var.get().update(settings.get('DEFAULT_CONTEXT'))
 
@@ -41,9 +42,14 @@ def log_response(request, response):
     logger = logging.getLogger('wings_sanic')
     full_path = request.path + ('?%s' % request.query_string if request.query_string else '')
     request_url = '{0} {1}'.format(request.method, full_path)
+
+    response_at = int(datetime_helper.timestamp() * 1000)
+    request_at = utils.get_value(context_var.get(), 'request_at', None)
+    spent = (response_at - request_at) if request_at else None
     extra = {
         'remote_ip': request.remote_addr,
         'request_uri': request_url,
+        'spent': spent
     }
 
     exception = getattr(response, 'exception', None)
