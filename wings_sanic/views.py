@@ -124,7 +124,6 @@ async def extract_params(request, metadata):
 
     # body
     if metadata.body_serializer:
-        print(request.headers['content-type'])
         if 'application/json' in request.headers['content-type']:
             body_data = request.json
         else:
