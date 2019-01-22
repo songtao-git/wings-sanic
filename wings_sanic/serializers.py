@@ -638,6 +638,7 @@ class IDField(StringField):
 class FileField(BaseField):
     """A field that validates input as a ID number.
     """
+
     def openapi_spec(self):
         return {
             'type': 'file',
@@ -927,7 +928,7 @@ class Serializer(BaseSerializer):
         super().__init__(*args, **kwargs)
 
         if self.__class__ != Serializer and self.__class__ not in definitions:
-            definitions[self.__class__] = (self, self.definition)
+            definitions[utils.cls_str_of_obj(self)] = self.definition
 
     def __new__(cls, *args, **kwargs):
         # We override this method in order to automagically create
@@ -1017,7 +1018,7 @@ class Serializer(BaseSerializer):
         if self.__class__ != Serializer:
             return {
                 "type": "object",
-                "$ref": "#/definitions/{}".format(self.__class__.__name__),
+                "$ref": f"#/definitions/{utils.cls_str_of_obj(self)}",
             }
         return {
             "type": "object",

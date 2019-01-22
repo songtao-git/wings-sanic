@@ -6,8 +6,8 @@
     <title>Swagger UI</title>
     <link rel="stylesheet" type="text/css"
           href="https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/3.20.2/swagger-ui.css">
-    <link rel="icon" type="image/png" href="/swagger/favicon-32x32.png" sizes="32x32" />
-    <link rel="icon" type="image/png" href="/swagger/favicon-16x16.png" sizes="16x16" />
+    <link rel="icon" type="image/png" href="/swagger/favicon-32x32.png" sizes="32x32"/>
+    <link rel="icon" type="image/png" href="/swagger/favicon-16x16.png" sizes="16x16"/>
     <style>
         html {
             box-sizing: border-box;
@@ -33,30 +33,32 @@
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/3.20.2/swagger-ui-bundle.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/3.20.2/swagger-ui-standalone-preset.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/axios/0.18.0/axios.min.js"></script>
 <script>
     window.onload = function () {
-        var url = '/swagger/openapi.json';
-        try {
-            url = window.location.protocol + '//' + window.location.host + url;
-        } catch (e) {
-        }
-        // Begin Swagger UI call region
-        const ui = SwaggerUIBundle({
-            url: url,
-            dom_id: '#swagger-ui',
-            deepLinking: true,
-            presets: [
-                SwaggerUIBundle.presets.apis,
-                SwaggerUIStandalonePreset
-            ],
-            plugins: [
-                SwaggerUIBundle.plugins.DownloadUrl
-            ],
-            layout: "StandaloneLayout"
-        })
-        // End Swagger UI call region
+        var url = window.location.protocol + '//' + window.location.host + '/swagger/group/';
+        console.log(axios);
+        axios.get(url)
+            .then(function (res) {
+                const ui = SwaggerUIBundle({
+                    urls: res['data'],
+                    dom_id: '#swagger-ui',
+                    deepLinking: true,
+                    presets: [
+                        SwaggerUIBundle.presets.apis,
+                        SwaggerUIStandalonePreset
+                    ],
+                    plugins: [
+                        SwaggerUIBundle.plugins.DownloadUrl
+                    ],
+                    layout: "StandaloneLayout"
+                });
+                // End Swagger UI call region
 
-        window.ui = ui
+                window.ui = ui
+            })
+        // Begin Swagger UI call region
+
     }
 </script>
 </body>

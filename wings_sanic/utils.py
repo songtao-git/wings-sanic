@@ -123,22 +123,30 @@ def get_value(instance_or_dict, name, default=None):
     return getattr(instance_or_dict, name, default)
 
 
-def cls_str_of_meth(meth):
+def cls_str_of_meth(meth, separator='.'):
+    if meth is None:
+        return None
     mod = inspect.getmodule(meth)
     cls = meth.__qualname__.split('.<locals>', 1)[0].rsplit('.', 1)[0]
-    return '{0}.{1}'.format(mod.__name__, cls)
+    return f'{mod.__name__}.{cls}'.replace('.', separator)
 
 
-def cls_str_of_obj(obj):
-    return '{0}.{1}'.format(obj.__class__.__module__, obj.__class__.__name__)
+def cls_str_of_obj(obj, separator='.'):
+    if obj is None:
+        return None
+    return f'{obj.__class__.__module__}.{obj.__class__.__name__}'.replace('.', separator)
 
 
-def cls_str_of_cls(cls):
-    return '{0}.{1}'.format(cls.__module__, cls.__name__)
+def cls_str_of_cls(cls, separator='.'):
+    if cls is None:
+        return None
+    return f'{cls.__module__}.{cls.__name__}'.replace('.', separator)
 
 
-def meth_str(meth):
-    return '{0}.{1}'.format(meth.__module__, meth.__qualname__)
+def meth_str(meth, separator='.'):
+    if meth is None:
+        return None
+    return f'{meth.__module__}.{meth.__qualname__}'.replace('.', separator)
 
 
 def import_from_str(obj_path):

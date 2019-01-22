@@ -56,7 +56,7 @@ DEFAULTS = {
     'EVENT_MAX_RETRY': -1,
 
     # rpc， mq传递上下文信息时传递指定的key
-    'IGNORE_CONTEXT_WHEN_DELIVERY': [
+    'CONTEXT_WHEN_DELIVERY': [
         'trance_id'
     ]
 }

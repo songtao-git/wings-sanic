@@ -26,7 +26,8 @@ class HandlerMetaData:
             response_serializer=None,
             success_code=200,
             context=None,
-            swagger_exclude=False
+            swagger_exclude=False,
+            swagger_group: dict = None
     ):
         self.uri = uri
         self.method = method
@@ -41,6 +42,7 @@ class HandlerMetaData:
         self.response_serializer = self.sure_serializer(response_serializer)
         self.context = context
         self.swagger_exclude = swagger_exclude
+        self.swagger_group = swagger_group
 
         fields_from_path = set(self.path_name_re.findall(uri))
         fields_from_serializer = set(getattr(self.path_serializer, 'fields', {}).keys())

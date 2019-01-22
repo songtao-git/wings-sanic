@@ -10,6 +10,22 @@ __all__ = ['WingsBluePrint']
 
 
 class WingsBluePrint(Blueprint):
+    """
+    :param swagger_group: similar with value of settings.get('SWAGGER')['info'], used by Swagger Topbar plugin.
+    """
+
+    def __init__(
+            self,
+            name,
+            url_prefix=None,
+            host=None,
+            version=None,
+            strict_slashes=False,
+            swagger_group: dict = None
+    ):
+        super().__init__(name, url_prefix, host, version, strict_slashes)
+        self.swagger_group = swagger_group
+
     def wings_route(self,
                     uri: str,
                     method: str = 'GET',
@@ -80,7 +96,8 @@ class WingsBluePrint(Blueprint):
                                    body_serializer=body_serializer,
                                    response_serializer=response_serializer,
                                    context=context,
-                                   swagger_exclude=swagger_exclude)
+                                   swagger_exclude=swagger_exclude,
+                                   swagger_group=self.swagger_group)
 
         def decorator(raw_handler):
             @wraps(raw_handler)
