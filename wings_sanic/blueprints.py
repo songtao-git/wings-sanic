@@ -21,7 +21,7 @@ class WingsBluePrint(Blueprint):
             host=None,
             version=None,
             strict_slashes=False,
-            swagger_group: dict = None
+            swagger_group=None
     ):
         super().__init__(name, url_prefix, host, version, strict_slashes)
         self.swagger_group = swagger_group

@@ -48,7 +48,9 @@ def build_spec(app, loop):
                 continue
 
             # ensure group info
-            group = metadata.swagger_group or {}
+            group = metadata.swagger_group or 'default'
+            if not isinstance(group, dict):
+                group = {'title': str(group)}
             group_title = group.get('title', None) or 'default'
             if group_title not in _spec:
                 _spec[group_title] = copy.deepcopy(settings.get('SWAGGER'))
@@ -159,12 +161,11 @@ def build_spec(app, loop):
 
 @blueprint.route('/group/')
 def spec_group(request, *args, **kwargs):
-    host = f'{request.scheme}://{request.host}'
     # default第一个，其他是排序后的结果
-    groups = [{'name': title, 'url': f'{host}/swagger/openapi/?group={title}'}
+    groups = [{'name': title, 'url': f'/swagger/openapi/?group={title}'}
               for title, _ in _spec.items() if title != 'default']
     groups.sort(key=lambda i: i['name'])
-    groups.insert(0, {'name': 'default', 'url': f'{host}/swagger/openapi/?group=default'})
+    groups.insert(0, {'name': 'default', 'url': '/swagger/openapi/?group=default'})
     return json(groups)
 
 

@@ -48,7 +48,7 @@ class Author(wings_sanic.Serializer):
     password = wings_sanic.StringField('密码', required=True, write_only=True)
 
 
-authors = wings_sanic.WingsBluePrint('authors', url_prefix='api/authors')
+authors = wings_sanic.WingsBluePrint('authors', url_prefix='api/authors', swagger_group='作家')
 
 
 @authors.get('/', response_serializer=Author(many=True))
