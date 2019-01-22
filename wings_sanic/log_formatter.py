@@ -20,7 +20,7 @@ class JsonFormatter(logging.Formatter):
 
         # 计算method_name
         method_name = ''
-        cls_name = ''
+        cls_name = getattr(record, 'module', "")
         func_name = record.funcName
         count = 40
         f = sys._getframe()
@@ -45,7 +45,7 @@ class JsonFormatter(logging.Formatter):
             ('project_name', settings.get('PROJECT_NAME')),
             ('project_version', settings.get('PROJECT_VERSION')),
             ("request_uri", getattr(record, 'request_uri', "")),
-            ("spent", getattr(record, 'spent', None) or ""),
+            ("spent", getattr(record, 'spent', None)),
             ("trace_id", (context_var.get() or {}).get('trace_id', '')),
             ("remote_ip", getattr(record, 'remote_ip', "")),
             ("local_ip", socket.gethostbyname(socket.gethostname())),
