@@ -55,12 +55,9 @@ DEFAULTS = {
     'EVENT_HANDLE_TIMEOUT': 10,
     'EVENT_MAX_RETRY': -1,
 
-    # rpc， mq传递上下文信息时忽略的key
+    # rpc， mq传递上下文信息时传递指定的key
     'IGNORE_CONTEXT_WHEN_DELIVERY': [
-        'messages',
-        'response_shape',
-        'serialize_when_none',
-        'request_at'
+        'trance_id'
     ]
 }
 

@@ -40,13 +40,13 @@ async def publish_message(routing_key: str, message, mq_server='default', send_a
     """
     ctx_delivery = {}
     for k, v in (context_var.get() or {}).items():
-        if k not in settings.get('IGNORE_CONTEXT_WHEN_DELIVERY'):
+        if k in settings.get('CONTEXT_WHEN_DELIVERY'):
             ctx_delivery[k] = v
     body = {
-        'message': utils.to_primitive(message),
+        'message': message,
         'context': ctx_delivery
     }
-    body = json.dumps(body)
+    body = json.dumps(utils.to_primitive(body))
     server = __get_mq_server(mq_server)
 
     if context_var.get() is None or not send_after_done:
