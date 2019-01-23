@@ -57,7 +57,7 @@ DEFAULTS = {
 
     # rpc， mq传递上下文信息时传递指定的key
     'CONTEXT_WHEN_DELIVERY': [
-        'trance_id'
+        'trace_id'
     ]
 }
 
