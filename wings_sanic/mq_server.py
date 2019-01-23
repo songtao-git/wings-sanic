@@ -8,5 +8,5 @@ class BaseMqServer:
     async def publish(self, routing_key: str, content: str):
         raise NotImplementedError
 
-    async def subscribe(self, routing_key: str, handler, max_retry=-1):
+    async def subscribe(self, routing_key: str, handler, max_retry=-1, subscribe=False):
         raise NotImplementedError

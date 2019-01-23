@@ -131,8 +131,9 @@ def start():
             server = registry.get(server_name, 'mq_servers')
             if not server:
                 raise Exception(f'cannot find named "{server_name}" mq_server')
-            for event_name, handler, max_retry in handlers:
-                await server.subscribe(routing_key=event_name, handler=handler, max_retry=max_retry)
+            for event_name, handler, max_retry, subscribe in handlers:
+                await server.subscribe(routing_key=event_name, handler=handler, max_retry=max_retry,
+                                       subscribe=subscribe)
 
     app.run(host="0.0.0.0", port=settings.get('HTTP_PORT'),
             workers=settings.get('WORKERS'), access_log=False)

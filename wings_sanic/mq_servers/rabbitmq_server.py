@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 import asyncio
 import logging
+import uuid
 
 import aioamqp
 import aioamqp.properties
@@ -13,13 +14,14 @@ logger = logging.getLogger(__name__)
 
 
 class Consumer:
-    def __init__(self, mq_server, queue, routing_key, handler, max_retry=-1):
+    def __init__(self, mq_server, queue, routing_key, handler, max_retry=-1, subscribe=False):
         self.mq_server = mq_server
         self.queue = queue
         self.routing_key = routing_key
         self.handler = handler
         self.channel = None
         self.max_retry = max_retry
+        self.subscribe = subscribe
 
     def get_ttl(self, retry_count):
         """
@@ -54,9 +56,14 @@ class Consumer:
 
     async def start(self):
         self.channel = await self.mq_server.connection.channel()
-        await self.channel.queue_declare(self.queue, durable=True)
-        await self.channel.queue_bind(self.queue, self.mq_server.work_exchange, routing_key=self.routing_key)
-        await self.channel.basic_consume(self.__on_message, self.queue)
+        if self.subscribe:
+            queue = f'{self.queue}_{str(uuid.uuid4().hex)}'
+            await self.channel.queue_declare(queue, exclusive=True)
+        else:
+            queue = self.queue
+            await self.channel.queue_declare(queue, durable=True)
+        await self.channel.queue_bind(queue, self.mq_server.work_exchange, routing_key=self.routing_key)
+        await self.channel.basic_consume(self.__on_message, queue)
 
 
 class MqServer(BaseMqServer):
@@ -143,13 +150,14 @@ class MqServer(BaseMqServer):
     async def publish(self, routing_key, content):
         self.loop.create_task(self.publishing_messages.put((routing_key, content)))
 
-    async def subscribe(self, routing_key: str, handler, max_retry=-1):
+    async def subscribe(self, routing_key: str, handler, max_retry=-1, subscribe=False):
         handler_path = utils.meth_str(handler)
         consumer = Consumer(mq_server=self,
                             queue=handler_path,
                             routing_key=routing_key,
                             handler=handler,
-                            max_retry=max_retry)
+                            max_retry=max_retry,
+                            subscribe=subscribe)
 
         self.consumers.add(consumer)
         if self.state == 'RUNNING':

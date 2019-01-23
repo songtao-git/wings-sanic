@@ -55,7 +55,7 @@ async def publish_message(routing_key: str, message, mq_server='default', send_a
         context_var.get()['messages'].append({'mq_server': server, 'body': body, 'routing_key': routing_key})
 
 
-def handler(event_name, mq_server='default', msg_type=DomainEvent, timeout=None, max_retry=None):
+def handler(event_name, mq_server='default', msg_type=DomainEvent, timeout=None, max_retry=None, subscribe=False):
     """
     添加事件处理器的装饰器
     :param event_name: 事件名
@@ -63,6 +63,7 @@ def handler(event_name, mq_server='default', msg_type=DomainEvent, timeout=None,
     :param msg_type: 将接受到的内容转化成该msg_type对应的类型，如果为None或者转化不成功则返回原字符串
     :param timeout: 处理的超时时长，默认值10秒，优先级 默认值 < settings设置 < 装饰器设置
     :param max_retry: 最大重试次数，默认值-1(无限重试)，优先级 默认值 < settings设置 < 装饰器设置
+    :param subscribe: True是pub-sub模式, 否则producer-consumer模式
     :return: 
     """
     timeout = timeout if timeout is not None else settings.get('EVENT_HANDLE_TIMEOUT')
@@ -103,7 +104,7 @@ def handler(event_name, mq_server='default', msg_type=DomainEvent, timeout=None,
 
         # 将handler注册到registry，app启动后初始化订阅
         handlers_cur = registry.get(mq_server, 'event_handlers') or set()
-        handlers_cur.add((event_name, wrapper, max_retry))
+        handlers_cur.add((event_name, wrapper, max_retry, subscribe))
         registry.set(mq_server, handlers_cur, 'event_handlers')
 
         return func
