@@ -42,6 +42,10 @@ class Consumer:
         await channel.close()
 
     async def __on_message(self, channel, body, envelope, properties):
+        self.mq_server.loop.create_task(self.__handle_message(body, properties))
+        await channel.basic_client_ack(envelope.delivery_tag)
+
+    async def __handle_message(self, body, properties):
         encoding = properties.content_encoding or 'utf-8'
         content = body.decode(encoding)
         retried_count = (properties.headers or {}).get('x-retry-count', 0)
@@ -50,9 +54,7 @@ class Consumer:
             await self.handler(content, retried_count)
         except:
             if self.max_retry < 0 or retried_count < self.max_retry:
-                self.mq_server.loop.create_task(self.__publish_to_retry_queue(body, retried_count))
-        finally:
-            await channel.basic_client_ack(envelope.delivery_tag)
+                await self.__publish_to_retry_queue(body, retried_count)
 
     async def start(self):
         self.channel = await self.mq_server.connection.channel()
