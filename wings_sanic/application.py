@@ -71,7 +71,20 @@ def log_response(request, response):
         logger.info(message, extra=extra)
 
 
-def start():
+def start(
+        host='0.0.0.0',
+        port=None,
+        debug=False,
+        ssl=None,
+        sock=None,
+        workers=None,
+        protocol=None,
+        backlog=100,
+        stop_event=None,
+        register_sys_signals=True,
+        access_log=False,
+        auto_reload=False,
+        **kwargs):
     """
     before start application, you need load your user_settings 
     by `wings_sanic.settings.load(**user_settings)`
@@ -135,5 +148,16 @@ def start():
                 await server.subscribe(routing_key=event_name, handler=handler, max_retry=max_retry,
                                        subscribe=subscribe)
 
-    app.run(host="0.0.0.0", port=settings.get('HTTP_PORT'),
-            workers=settings.get('WORKERS'), access_log=False)
+    app.run(host=host,
+            port=port or settings.get('HTTP_PORT'),
+            debug=debug,
+            ssl=ssl,
+            sock=sock,
+            workers=workers or settings.get('WORKERS'),
+            protocol=protocol,
+            backlog=backlog,
+            stop_event=stop_event,
+            register_sys_signals=register_sys_signals,
+            access_log=access_log,
+            auto_reload=auto_reload,
+            **kwargs)
