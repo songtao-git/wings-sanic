@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 class Consumer:
     def __init__(self, mq_server, queue, routing_key, handler, max_retry=-1, subscribe=False):
         self.mq_server = mq_server
-        self.queue = queue
+        self.queue = f'{queue}_{str(uuid.uuid4().hex)}' if subscribe else queue
         self.routing_key = routing_key
         self.handler = handler
         self.channel = None
@@ -57,13 +57,11 @@ class Consumer:
     async def start(self):
         self.channel = await self.mq_server.connection.channel()
         if self.subscribe:
-            queue = f'{self.queue}_{str(uuid.uuid4().hex)}'
-            await self.channel.queue_declare(queue, exclusive=True)
+            await self.channel.queue_declare(self.queue, exclusive=True)
         else:
-            queue = self.queue
-            await self.channel.queue_declare(queue, durable=True)
-        await self.channel.queue_bind(queue, self.mq_server.work_exchange, routing_key=self.routing_key)
-        await self.channel.basic_consume(self.__on_message, queue)
+            await self.channel.queue_declare(self.queue, durable=True)
+        await self.channel.queue_bind(self.queue, self.mq_server.work_exchange, routing_key=self.routing_key)
+        await self.channel.basic_consume(self.__on_message, self.queue)
 
 
 class MqServer(BaseMqServer):
