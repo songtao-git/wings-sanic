@@ -104,7 +104,8 @@ def start(
 
         @app.exception(NotFound)
         def handle_404_redirect(request, exception):
-            if str(exception).lower().startswith('request url'):
+            import re
+            if re.match('.*url.*not found', str(exception).lower()):
                 return redirect('/swagger/')
             return handle_exception(request, exception)
 
