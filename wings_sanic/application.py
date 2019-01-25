@@ -104,7 +104,9 @@ def start(
 
         @app.exception(NotFound)
         def handle_404_redirect(request, exception):
-            return redirect('/swagger/')
+            if str(exception).lower().startswith('request url'):
+                return redirect('/swagger/')
+            return handle_exception(request, exception)
 
     for bp_str in settings.get('BLUEPRINTS'):
         bp = utils.import_from_str(bp_str)
