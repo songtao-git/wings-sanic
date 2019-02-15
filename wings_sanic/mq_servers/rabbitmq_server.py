@@ -181,7 +181,7 @@ class MqServer(BaseMqServer):
                              self.work_exchange, routing_key, content, exc_info=ex)
 
     async def publish(self, routing_key, content):
-        self.loop.create_task(self.publishing_messages.put((routing_key, content)))
+        await self.publishing_messages.put((routing_key, content))
 
     async def subscribe(self, routing_key: str, handler, msg_type, timeout=10, max_retry=-1, subscribe=False):
         handler_path = utils.meth_str(handler)
