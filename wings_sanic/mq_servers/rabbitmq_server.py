@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 import asyncio
+import contextvars
 import logging
 import uuid
 
@@ -7,19 +8,21 @@ import aioamqp
 import aioamqp.properties
 import aioamqp.protocol
 
-from wings_sanic import utils
+from wings_sanic import utils, context_var, event
 from wings_sanic.mq_server import BaseMqServer
 
 logger = logging.getLogger(__name__)
 
 
 class Consumer:
-    def __init__(self, mq_server, queue, routing_key, handler, max_retry=-1, subscribe=False):
+    def __init__(self, mq_server, queue, routing_key, handler, msg_type, timeout=10, max_retry=-1, subscribe=False):
         self.mq_server = mq_server
         self._queue = queue
         self.queue = queue
         self.routing_key = routing_key
         self.handler = handler
+        self.msg_type = msg_type
+        self.timeout = timeout
         self.channel = None
         self.max_retry = max_retry
         self.subscribe = subscribe
@@ -48,15 +51,42 @@ class Consumer:
     async def __handle_message(self, channel, body, envelope, properties):
         encoding = properties.content_encoding or 'utf-8'
         content = body.decode(encoding)
+        logger.debug('receive message from mq: %s', content)
+
+        data = utils.instance_from_json(content)
+        ctx = utils.get_value(data, 'context', {})
+        ctx['trace_id'] = utils.get_value(ctx, 'trace_id', str(uuid.uuid4().hex))
+        ctx['messages'] = []
+        context_var.set(ctx)
+
+        message = utils.get_value(data, 'message', data)
+        message = utils.instance_from_json(message, cls=self.msg_type)
+
         retried_count = (properties.headers or {}).get('x-retry-count', 0)
         retried_count = retried_count if retried_count >= 0 else 0
+
         try:
-            await self.handler(content, retried_count)
-        except:
+            if asyncio.iscoroutinefunction(self.handler):
+                fu = asyncio.ensure_future(self.handler(message), loop=self.mq_server.loop)
+            else:
+                context = contextvars.copy_context()
+                fu = self.mq_server.loop.run_in_executor(None, context.run, self.handler, message)
+            await asyncio.wait_for(fu, self.timeout, loop=self.mq_server.loop)
+            event.commit_events()
+            logger.info(
+                f'handle message success. event_name:{self.routing_key}, handler:{utils.meth_str(self.handler)}, '
+                f'retried_count: {retried_count}')
+        except Exception as ex:
             if self.max_retry < 0 or retried_count < self.max_retry:
                 await self.__publish_to_retry_queue(body, retried_count)
+
+            error_info = f"event_name: {self.routing_key}, handler: {utils.meth_str(self.handler)}, " \
+                         f"retried_count: {retried_count}, messages: \n{content}"
+            logger.error(error_info, exc_info=ex)
+
         finally:
             await channel.basic_client_ack(envelope.delivery_tag)
+            context_var.set(None)
 
     async def start(self):
         self.channel = await self.mq_server.connection.channel()
@@ -153,12 +183,14 @@ class MqServer(BaseMqServer):
     async def publish(self, routing_key, content):
         self.loop.create_task(self.publishing_messages.put((routing_key, content)))
 
-    async def subscribe(self, routing_key: str, handler, max_retry=-1, subscribe=False):
+    async def subscribe(self, routing_key: str, handler, msg_type, timeout=10, max_retry=-1, subscribe=False):
         handler_path = utils.meth_str(handler)
         consumer = Consumer(mq_server=self,
                             queue=handler_path,
                             routing_key=routing_key,
                             handler=handler,
+                            timeout=timeout,
+                            msg_type=msg_type,
                             max_retry=max_retry,
                             subscribe=subscribe)
 

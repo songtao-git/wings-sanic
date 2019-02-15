@@ -1,10 +1,7 @@
 # -*- coding: utf-8 -*-
 import asyncio
-import contextvars
 import json
 import logging
-import uuid
-from functools import wraps
 
 from . import datetime_helper, registry, context_var, settings, utils
 
@@ -72,39 +69,9 @@ def handler(event_name, mq_server='default', msg_type=DomainEvent, timeout=None,
     max_retry = max_retry if max_retry is not None else -1
 
     def decorator(func):
-        @wraps(func)
-        async def wrapper(content, retried_count):
-            server = __get_mq_server(mq_server)
-            data = utils.instance_from_json(content)
-            ctx = utils.get_value(data, 'context', {})
-            ctx['trace_id'] = utils.get_value(ctx, 'trace_id', str(uuid.uuid4().hex))
-            ctx['messages'] = []
-            context_var.set(ctx)
-
-            message = utils.get_value(data, 'message', data)
-            message = utils.instance_from_json(message, cls=msg_type)
-            try:
-                if asyncio.iscoroutinefunction(func):
-                    fu = asyncio.ensure_future(func(message), loop=server.loop)
-                else:
-                    context = contextvars.copy_context()
-                    fu = server.loop.run_in_executor(None, context.run, func, message)
-                await asyncio.wait_for(fu, timeout, loop=server.loop)
-                commit_events()
-                logger.info(
-                    f'handle message success. event_name:{event_name}, handler:{utils.meth_str(func)}, '
-                    f'retried_count: {retried_count}')
-            except Exception as ex:
-                error_info = f"event_name: {event_name}, handler: {utils.meth_str(func)}, " \
-                             f"retried_count: {retried_count}, messages: \n{message}"
-                logger.error(error_info, exc_info=ex)
-                raise ex
-            finally:
-                context_var.set(None)
-
         # 将handler注册到registry，app启动后初始化订阅
         handlers_cur = registry.get(mq_server, 'event_handlers') or set()
-        handlers_cur.add((event_name, wrapper, max_retry, subscribe))
+        handlers_cur.add((event_name, func, msg_type, timeout, max_retry, subscribe))
         registry.set(mq_server, handlers_cur, 'event_handlers')
 
         return func
