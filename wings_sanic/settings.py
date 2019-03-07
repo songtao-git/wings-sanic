@@ -55,10 +55,11 @@ DEFAULTS = {
     'EVENT_HANDLE_TIMEOUT': 10,
     'EVENT_MAX_RETRY': -1,
 
-    # rpc， mq传递上下文信息时传递指定的key
-    'CONTEXT_WHEN_DELIVERY': [
-        'trace_id'
-    ]
+    # rpc， mq传递上下文信息时传递指定的key, 加入headers时，
+    # 1. 自动加X-前缀
+    # 2. 转化为大些
+    # 3. _转化为-
+    'CONTEXT_WHEN_DELIVERY': []
 }
 
 

@@ -8,7 +8,7 @@ import aioamqp
 import aioamqp.properties
 import aioamqp.protocol
 
-from wings_sanic import utils, context_var, event
+from wings_sanic import utils, context_var, event, settings
 from wings_sanic.mq_server import BaseMqServer
 
 logger = logging.getLogger(__name__)
@@ -54,12 +54,16 @@ class Consumer:
         logger.debug('receive message from mq: %s', content)
 
         data = utils.instance_from_json(content)
-        ctx = utils.get_value(data, 'context', {})
-        ctx['trace_id'] = utils.get_value(ctx, 'trace_id', str(uuid.uuid4().hex))
-        ctx['messages'] = []
+        headers = utils.get_value(data, 'headers', {})
+        ctx = {'trace_id': utils.get_value(headers, 'X-TRACE-ID', '')}
+        # 用户定制传递的消息头
+        for k in settings.get('CONTEXT_WHEN_DELIVERY'):
+            h_k = 'X-' + k.upper().replace('_', '-')
+            ctx[k] = utils.get_value(headers, h_k)
+
         context_var.set(ctx)
 
-        message = utils.get_value(data, 'message', data)
+        message = utils.get_value(data, 'payload', data)
         message = utils.instance_from_json(message, cls=self.msg_type)
 
         retried_count = (properties.headers or {}).get('x-retry-count', 0)

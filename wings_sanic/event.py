@@ -35,21 +35,33 @@ async def publish_message(routing_key: str, message, mq_server='default', send_a
     """
     发送消息
     """
-    ctx_delivery = {}
-    for k, v in (context_var.get() or {}).items():
-        if k in settings.get('CONTEXT_WHEN_DELIVERY'):
-            ctx_delivery[k] = v
+    ctx = context_var.get() or {}
+    # 默认必传递的信息
+    ctx_delivery = {
+        'X-TRACE-ID': ctx.get('trace_id', ''),
+        'X-EVENT-NAME': routing_key,
+        'X-OCCUR-ON': datetime_helper.now()
+    }
+    # 用户定制传递的消息头
+    for key in settings.get('CONTEXT_WHEN_DELIVERY'):
+        ctx_delivery['X-' + key.upper().replace('_', '-')] = utils.get_value(ctx, key)
+
     body = {
-        'message': message,
-        'context': ctx_delivery
+        'payload': message,
+        'headers': ctx_delivery
     }
     body = json.dumps(utils.to_primitive(body))
     server = __get_mq_server(mq_server)
 
-    if context_var.get() is None or not send_after_done:
+    # 立即发送
+    # 1. context_var未设置，无法收集message
+    # 2. 调用设置send_after_done=False
+    if not ctx or not send_after_done:
         await server.publish(routing_key, body)
     else:
-        context_var.get()['messages'].append({'mq_server': server, 'body': body, 'routing_key': routing_key})
+        messages = ctx.get('messages', [])
+        messages.append({'mq_server': server, 'body': body, 'routing_key': routing_key})
+        ctx['messages'] = messages
 
 
 def handler(event_name, mq_server='default', msg_type=DomainEvent, timeout=None, max_retry=None, subscribe=False):
