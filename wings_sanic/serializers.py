@@ -513,7 +513,9 @@ class DateField(BaseField):
 
     def to_primitive(self, value, context=None):
         native_data = self.to_native(value)
-        return datetime_helper.get_date_str(native_data)
+        if native_data:
+            return datetime_helper.get_date_str(native_data)
+        return None
 
     def openapi_spec(self):
         return {
@@ -544,7 +546,9 @@ class DateTimeField(BaseField):
 
     def to_primitive(self, value, context=None):
         native_data = self.to_native(value, context)
-        return datetime_helper.get_time_str(native_data)
+        if native_data:
+            return datetime_helper.get_time_str(native_data)
+        return None
 
     def openapi_spec(self):
         return {
@@ -573,7 +577,9 @@ class TimestampField(BaseField):
 
     def to_primitive(self, value, context=None):
         native_data = self.to_native(value, context)
-        return native_data.timestamp()
+        if native_data:
+            return native_data.timestamp()
+        return None
 
     def openapi_spec(self):
         return {
