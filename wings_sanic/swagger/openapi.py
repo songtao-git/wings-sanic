@@ -24,6 +24,13 @@ def __summary_description(doc_string):
     return s[0].strip(), s[1].strip()
 
 
+def __update_definitions(group_spec, serializer):
+    serializer = serializer.child if isinstance(serializer, serializers.ListSerializer) else serializer
+    cls_str = utils.cls_str_of_obj(serializer)
+    if cls_str in serializers.definitions:
+        group_spec['definitions'][cls_str] = serializers.definitions[cls_str]
+
+
 @blueprint.listener('before_server_start')
 def build_spec(app, loop):
     for uri, route in app.router.routes_all.items():
@@ -72,30 +79,21 @@ def build_spec(app, loop):
                 parameter = field.openapi_spec()
                 parameter.update({'in': 'header'})
                 parameters.append(parameter)
-
-                cls_str = utils.cls_str_of_obj(metadata.header_serializer)
-                if cls_str in serializers.definitions:
-                    group_spec['definitions'][cls_str] = serializers.definitions[cls_str]
+                __update_definitions(group_spec, metadata.header_serializer)
 
             # path
             for name, field in (utils.get_value(metadata.path_serializer, 'fields') or {}).items():
                 parameter = field.openapi_spec()
                 parameter.update({'in': 'path', 'required': True})
                 parameters.append(parameter)
-
-                cls_str = utils.cls_str_of_obj(metadata.path_serializer)
-                if cls_str in serializers.definitions:
-                    group_spec['definitions'][cls_str] = serializers.definitions[cls_str]
+                __update_definitions(group_spec, metadata.path_serializer)
 
             # query
             for name, field in (utils.get_value(metadata.query_serializer, 'fields') or {}).items():
                 parameter = field.openapi_spec()
                 parameter.update({'in': 'query'})
                 parameters.append(parameter)
-
-                cls_str = utils.cls_str_of_obj(metadata.query_serializer)
-                if cls_str in serializers.definitions:
-                    group_spec['definitions'][cls_str] = serializers.definitions[cls_str]
+                __update_definitions(group_spec, metadata.query_serializer)
 
             # body
             has_file_filed = False
@@ -121,18 +119,14 @@ def build_spec(app, loop):
                             **field_spec
                         })
 
-                cls_str = utils.cls_str_of_obj(metadata.body_serializer)
-                if cls_str in serializers.definitions:
-                    group_spec['definitions'][cls_str] = serializers.definitions[cls_str]
+                __update_definitions(group_spec, metadata.body_serializer)
 
             # response
             response_spec = None
             if metadata.response_serializer:
                 response_spec = metadata.response_serializer.openapi_spec()
 
-                cls_str = utils.cls_str_of_obj(metadata.response_serializer)
-                if cls_str in serializers.definitions:
-                    group_spec['definitions'][cls_str] = serializers.definitions[cls_str]
+                __update_definitions(group_spec, metadata.response_serializer)
 
             response_shape = get_response_shape(metadata.context)
             response_spec = response_shape.swagger(response_spec)
