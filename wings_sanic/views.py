@@ -124,7 +124,7 @@ async def extract_params(request, metadata):
 
     # body
     if metadata.body_serializer:
-        if 'application/json' in utils.get_value(request.headers, 'content-type', []):
+        if 'application/json' in utils.get_value(request.headers, 'content-type', ['application/json']):
             body_data = request.json
         else:
             body_data = from_form_data({
