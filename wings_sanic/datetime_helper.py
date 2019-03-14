@@ -3,9 +3,10 @@
 import datetime
 import re
 
-
 ZERO_TIME_DELTA = datetime.timedelta(0)
-LOCAL_TIME_DELTA = datetime.datetime.now() - datetime.datetime.utcnow()
+LOCAL_TIME_DELTA = datetime.timedelta(
+    seconds=round((datetime.datetime.now() - datetime.datetime.utcnow()).total_seconds())
+)
 
 
 class UTC(datetime.tzinfo):
@@ -24,9 +25,9 @@ class LocalTimeZone(datetime.tzinfo):
         return ZERO_TIME_DELTA
 
     def tzname(self, dt):
-        total_seconds = round(LOCAL_TIME_DELTA.total_seconds())
-        hours = int(total_seconds/3600)
-        minutes = int((total_seconds - 3600 * hours)/60)
+        total_seconds = LOCAL_TIME_DELTA.total_seconds()
+        hours = int(total_seconds / 3600)
+        minutes = int((total_seconds - 3600 * hours) / 60)
         return '+%02d:%02d' % (hours, minutes)
 
 
@@ -91,7 +92,7 @@ def parse_datetime(value):
         return dt.astimezone(UTC)
 
 
-def convert_zone(dt: datetime.datetime, tz_to=UTC, tz_default=LocalTimeZone):
+def convert_zone(dt: datetime.datetime, tz_to, tz_default=UTC):
     """
     :param dt:
     :param tz_to: 转换后的目标时区
@@ -105,18 +106,18 @@ def convert_zone(dt: datetime.datetime, tz_to=UTC, tz_default=LocalTimeZone):
     return dt.astimezone(tz_to)
 
 
-def get_utc_time(dt: datetime.datetime = None, tz_default=LocalTimeZone):
+def get_utc_time(dt: datetime.datetime = None, tz_default=UTC):
     """
     :param dt: 为None时，返回当前时间
     :param tz_default: dt无时区信息时的默认时区
     :return:
     """
     if dt is None:
-        dt = datetime.datetime.now()
-    return convert_zone(dt, tz_default=tz_default)
+        dt = datetime.datetime.utcnow()
+    return convert_zone(dt, UTC, tz_default)
 
 
-def get_local_time(dt: datetime.datetime = None, tz_default=LocalTimeZone):
+def get_local_time(dt: datetime.datetime = None, tz_default=UTC):
     """
     :param dt: 为None时，返回当前时间
     :param tz_default: dt无时区信息时的默认时区
@@ -139,15 +140,15 @@ def timestamp():
     return now().timestamp()
 
 
-def get_time_str(dt: datetime.datetime = None, tz_default=LocalTimeZone):
+def get_time_str(dt: datetime.datetime = None, tz_default=UTC):
     """
     :param dt: 为None时，返回当前时间
     :param tz_default: dt无时区信息时的默认时区
     :return:
     """
     if not dt:
-        dt = datetime.datetime.now()
-    dt = convert_zone(dt, tz_default=tz_default)
+        dt = datetime.datetime.utcnow()
+    dt = convert_zone(dt, UTC, tz_default)
     time_str = dt.isoformat().split('+')[0]
     return time_str + 'Z'
 
@@ -167,11 +168,11 @@ def from_timestamp(timestamp):
     :param timestamp:
     :return:
     """
-    dt = datetime.datetime.fromtimestamp(timestamp)
+    dt = datetime.datetime.utcfromtimestamp(timestamp)
     return get_utc_time(dt)
 
 
 if __name__ == '__main__':
-    print(get_utc_time(datetime.datetime.now()))
+    print(get_local_time())
     print(get_local_time().strftime('%Y-%m-%d %H:%M:%S'))
     print(from_timestamp(1543675109).timestamp())
