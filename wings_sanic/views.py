@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+from sanic import exceptions
 from sanic.response import json, BaseHTTPResponse
 
 from wings_sanic import utils, serializers, context_var
@@ -124,13 +125,16 @@ async def extract_params(request, metadata):
 
     # body
     if metadata.body_serializer:
-        if 'application/json' in utils.get_value(request.headers, 'content-type', ['application/json']):
-            body_data = request.json
-        else:
+        if request.form or request.files:
             body_data = from_form_data({
                 **request.form,
                 **request.files
             }, metadata.body_serializer)
+        else:
+            try:
+                body_data = request.json
+            except:
+                raise exceptions.InvalidUsage('传入参数格式有误')
         params['body'] = metadata.body_serializer.validate(body_data, context_var.get())
 
     return params
