@@ -1,11 +1,9 @@
 # -*- coding: utf-8 -*-
-
 import asyncio
 import logging
 import logging.config
 import uuid
 
-import uvloop
 from sanic.exceptions import NotFound
 from sanic.response import redirect
 from sanic_cors import CORS
@@ -96,8 +94,11 @@ def start(
         CORS(app, automatic_options=True, supports_credentials=True)
     app.config.update(settings.working_settings)
 
-    asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
-
+    try:
+        import uvloop
+        asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
+    except ImportError:
+        pass
     # when DEBUG==True, swagger document is available
     if settings.get('DEBUG'):
         app.blueprint(swagger_blueprint)
@@ -149,7 +150,7 @@ def start(
                 raise Exception(f'cannot find named "{server_name}" mq_server')
             for event_name, handler, msg_type, timeout, max_retry, subscribe in handlers:
                 await server.subscribe(routing_key=event_name, handler=handler, msg_type=msg_type,
-                                       timeout=timeout, max_retry=max_retry,subscribe=subscribe)
+                                       timeout=timeout, max_retry=max_retry, subscribe=subscribe)
 
     app.run(host=host,
             port=port or settings.get('HTTP_PORT'),
