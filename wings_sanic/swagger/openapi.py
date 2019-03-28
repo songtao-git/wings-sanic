@@ -25,10 +25,20 @@ def __summary_description(doc_string):
 
 
 def __update_definitions(group_spec, serializer):
-    serializer = serializer.child if isinstance(serializer, serializers.ListSerializer) else serializer
-    cls_str = utils.cls_str_of_obj(serializer)
-    if cls_str in serializers.definitions:
-        group_spec['definitions'][cls_str] = serializers.definitions[cls_str]
+    # 解析serializer
+    if isinstance(serializer, serializers.BaseSerializer):
+        serializer = serializer.child if isinstance(serializer, serializers.ListSerializer) else serializer
+        cls_str = utils.cls_str_of_obj(serializer)
+        if cls_str in serializers.definitions:
+            group_spec['definitions'][cls_str] = serializers.definitions[cls_str]
+        # 递归解析serializer的fields(其中可能存在SerializerField)
+        for field in serializer.fields.values():
+            __update_definitions(group_spec, field)
+    # 解析field
+    if isinstance(serializer, serializers.SerializerField):
+        __update_definitions(group_spec, serializer.serializer)
+    if isinstance(serializer, serializers.ListField):
+        __update_definitions(group_spec, serializer.field)
 
 
 @blueprint.listener('before_server_start')

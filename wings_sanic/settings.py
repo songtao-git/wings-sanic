@@ -128,3 +128,7 @@ def get(attr):
             return DEFAULTS[attr]
         except KeyError:
             raise AttributeError("Invalid setting: '%s'" % attr)
+
+
+def __getattr__(name):
+    return get(name)

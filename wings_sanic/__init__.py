@@ -15,25 +15,32 @@ context_var = contextvars.ContextVar('context_var', default=None)
 
 class registry:
     def __init__(self):
-        self._data = {}
+        self.__dict__ = {}
+        # self._data = {}
+
+    def __getattr__(self, item):
+        return self.get(item)
+
+    def __setattr__(self, key, value):
+        self.set(key, value)
 
     def set(self, k, v, group=None):
         if not group:
             group = '__default'
-        if group not in self._data:
-            self._data[group] = {}
-        self._data[group][k] = v
+        if group not in self.__dict__:
+            self.__dict__[group] = {}
+        self.__dict__[group][k] = v
 
     def get(self, k, group=None):
         if not group:
             group = '__default'
-        val = self._data.get(group, {}).get(k, None)
+        val = self.__dict__.get(group, {}).get(k, None)
         return val
 
     def get_group(self, group=None):
         if not group:
             group = '__default'
-        return self._data.get(group, {})
+        return self.__dict__.get(group, {})
 
 
 registry = registry()
