@@ -6,8 +6,8 @@
     <title>Swagger UI</title>
     <link rel="stylesheet" type="text/css"
           href="https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/3.20.2/swagger-ui.css">
-    <link rel="icon" type="image/png" href="/swagger/favicon-32x32.png" sizes="32x32"/>
-    <link rel="icon" type="image/png" href="/swagger/favicon-16x16.png" sizes="16x16"/>
+    <link rel="icon" type="image/png" href="https://swagger.io/swagger/media/assets/swagger_fav.png" sizes="32x32"/>
+    <link rel="icon" type="image/png" href="https://swagger.io/swagger/media/assets/swagger_fav.png" sizes="16x16"/>
     <style>
         html {
             box-sizing: border-box;
@@ -36,7 +36,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/axios/0.18.0/axios.min.js"></script>
 <script>
     window.onload = function () {
-        var url = window.location.protocol + '//' + window.location.host + '/swagger/group/';
+        var url = window.location.toString().split("?")[0]+ 'group/';
         console.log(axios);
         axios.get(url)
             .then(function (res) {

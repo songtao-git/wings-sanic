@@ -5,6 +5,7 @@ from wings_sanic import application, settings
 
 # -----------  dev settings -------------
 dev_settings = {
+    'GLOBAL_URL_PREFIX': '/api',
     'BLUEPRINTS': [
         'api.api'
     ],

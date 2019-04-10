@@ -39,7 +39,7 @@ dev_settings = {
     'DEFAULT_CONTEXT': {
         'response_shape': 'wings_sanic.views.ResponseShapeCodeDataMsg'
     },
-
+    'GLOBAL_URL_PREFIX': '/api',
     'MQ_SERVERS': {
         'default': {
             'server': 'wings_sanic.mq_servers.rabbitmq_server.MqServer',

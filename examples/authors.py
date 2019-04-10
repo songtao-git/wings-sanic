@@ -6,7 +6,7 @@ dev_settings = {
     'DEFAULT_CONTEXT': {
         'response_shape': 'wings_sanic.views.ResponseShapeCodeDataMsg'
     },
-
+    'GLOBAL_URL_PREFIX': '/api',
     'MQ_SERVERS': {
         'default': {
             'server': 'wings_sanic.mq_servers.rabbitmq_server.MqServer',
@@ -89,11 +89,11 @@ async def handle_author_created(evt):
 
 @authors.post('/<author_id>/',
               path_params={'author_id': wings_sanic.IntField('作者Id')},
-             body_serializer={
-                 'head_image': wings_sanic.FileField('头像'),
-                 'description': wings_sanic.StringField('描述信息')
-             })
-async def upload_image(request, author_id,  body, *args, **kwargs):
+              body_serializer={
+                  'head_image': wings_sanic.FileField('头像'),
+                  'description': wings_sanic.StringField('描述信息')
+              })
+async def upload_image(request, author_id, body, *args, **kwargs):
     """
     上传作者头像
     """

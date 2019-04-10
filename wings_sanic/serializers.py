@@ -958,8 +958,9 @@ class Serializer(BaseSerializer):
             elif hasattr(data, field_name):
                 field_data = getattr(data, field_name)
             else:
-                raise TypeError('"{0}" object has no attribute "{1}"'.format(data.__class__.__name__,
-                                                                             field_name))
+                field_data = None
+                # raise TypeError('"{0}" object has no attribute "{1}"'.format(data.__class__.__name__,
+                #                                                              field_name))
             native_data[field_name] = field.to_native(field_data, context)
         return native_data
 

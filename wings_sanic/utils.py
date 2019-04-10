@@ -3,6 +3,7 @@ import datetime
 import decimal
 import inspect
 import json
+import os
 from typing import Sequence, Mapping
 
 from wings_sanic import datetime_helper
@@ -163,3 +164,13 @@ def remove_nulls(dictionary, deep=True):
         for k, v in dictionary.items()
         if v is not None
     }
+
+
+def load_path(path):
+    """加载某目录下所有的.py文件，可用于加载某目录下所有的event handlers时"""
+    for item in os.listdir(path):
+        item_path = '%s/%s' % (path, item)
+        if item.endswith('.py'):
+            __import__('{pkg}.{mdl}'.format(pkg=path.replace('/', '.'), mdl=item[:-3]))
+        elif os.path.isdir(item_path):
+            load_path(item_path)

@@ -10,6 +10,7 @@ from sanic_cors import CORS
 
 from wings_sanic import settings, utils, serializers, registry, inspector, context_var, event, datetime_helper
 from wings_sanic.app import WingsSanic
+from wings_sanic.blueprints import WingsBluePrint
 from wings_sanic.mq_server import BaseMqServer
 from wings_sanic.swagger import swagger_blueprint
 
@@ -101,18 +102,17 @@ def start(
         pass
     # when DEBUG==True, swagger document is available
     if settings.get('DEBUG'):
-        app.blueprint(swagger_blueprint)
+        app.blueprint(WingsBluePrint.group(swagger_blueprint, url_prefix=settings.GLOBAL_URL_PREFIX))
 
         @app.exception(NotFound)
         def handle_404_redirect(request, exception):
             import re
             if re.match('.*url.*not found', str(exception).lower()):
-                return redirect('/swagger/')
+                return redirect(app.url_for('swagger.static'))
             return handle_exception(request, exception)
 
-    for bp_str in settings.get('BLUEPRINTS'):
-        bp = utils.import_from_str(bp_str)
-        app.blueprint(bp)
+    bps = [utils.import_from_str(bp_str) for bp_str in settings.get('BLUEPRINTS')]
+    app.blueprint(WingsBluePrint.group(bps, url_prefix=settings.GLOBAL_URL_PREFIX))
 
     @app.exception(Exception)
     def handle_exception(request, exception):
@@ -122,7 +122,8 @@ def start(
         setattr(response, 'exception', exception)
         return response
 
-    @app.get('/ping/', response_serializer={'ping': serializers.StringField('Ping-Pong', required=True)})
+    @app.get(f'{settings.GLOBAL_URL_PREFIX}/ping/',
+             response_serializer={'ping': serializers.StringField('Ping-Pong', required=True)})
     async def ping(request, *args, **kwargs):
         return {'ping': 'pong'}
 

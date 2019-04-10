@@ -11,7 +11,7 @@ from sanic.views import CompositionView
 from wings_sanic import settings, utils, serializers
 from wings_sanic.views import get_response_shape
 
-blueprint = Blueprint('swagger', url_prefix='swagger')
+blueprint = Blueprint('swagger', url_prefix='/swagger')
 
 _spec = {}
 
@@ -44,7 +44,7 @@ def __update_definitions(group_spec, serializer):
 @blueprint.listener('before_server_start')
 def build_spec(app, loop):
     for uri, route in app.router.routes_all.items():
-        if uri.startswith("/swagger"):
+        if uri.startswith(f"{settings.GLOBAL_URL_PREFIX}/swagger"):
             continue
 
         # Build list of methods and their handler functions
@@ -166,10 +166,10 @@ def build_spec(app, loop):
 @blueprint.route('/group/')
 def spec_group(request, *args, **kwargs):
     # default第一个，其他是排序后的结果
-    groups = [{'name': title, 'url': f'/swagger/openapi/?group={title}'}
+    groups = [{'name': title, 'url': f'{settings.GLOBAL_URL_PREFIX}/swagger/openapi/?group={title}'}
               for title, _ in _spec.items() if title != 'default']
     groups.sort(key=lambda i: i['name'])
-    groups.insert(0, {'name': 'default', 'url': '/swagger/openapi/?group=default'})
+    groups.insert(0, {'name': 'default', 'url': f'{settings.GLOBAL_URL_PREFIX}/swagger/openapi/?group=default'})
     return json(groups)
 
 
@@ -180,5 +180,5 @@ def spec(request, *args, **kwargs):
 
 
 dir_path = os.path.dirname(os.path.realpath(__file__))
-blueprint.static('/', dir_path + '/index.html')
 blueprint.static('/', dir_path)
+blueprint.static('//', dir_path + '/index.html')
