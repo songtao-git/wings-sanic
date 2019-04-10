@@ -166,11 +166,16 @@ def remove_nulls(dictionary, deep=True):
     }
 
 
-def load_path(path):
-    """加载某目录下所有的.py文件，可用于加载某目录下所有的event handlers时"""
+def __load(path):
     for item in os.listdir(path):
         item_path = '%s/%s' % (path, item)
         if item.endswith('.py'):
             __import__('{pkg}.{mdl}'.format(pkg=path.replace('/', '.'), mdl=item[:-3]))
         elif os.path.isdir(item_path):
             load_path(item_path)
+
+
+def load_path(*path):
+    """加载某目录下所有的.py文件，可用于加载某目录下所有的event handlers时"""
+    for p in path:
+        __load(p)
