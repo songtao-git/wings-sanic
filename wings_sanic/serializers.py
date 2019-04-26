@@ -213,24 +213,28 @@ class BaseField(metaclass=FieldMeta):
             default = default()
         return default
 
+    def _preproccess(self, value, context=None):
+        return value
+
     def to_primitive(self, value, context=None):
         """Convert internal data to a value safe to serialize.
         """
-        native_data = self.to_native(value, context)
-        if native_data is None:
-            return None
-        if self.primitive_type is not None and not isinstance(native_data, self.primitive_type):
-            return self.primitive_type(native_data)
-        return native_data
+        value = self._preproccess(value, context) if value is not None else None
+        if value is None and self._default is not Undefined:
+            value = self.default
 
-    def _to_native(self, value, context=None):
+        if value is None:
+            return None
+
+        if self.primitive_type is not None and not isinstance(value, self.primitive_type):
+            return self.primitive_type(value)
         return value
 
     def to_native(self, value, context=None):
         """
         Convert untrusted data to a richer Python construct.
         """
-        value = self._to_native(value, context) if value is not None else None
+        value = self._preproccess(value, context) if value is not None else None
         if value is None and self._default is not Undefined:
             value = self.default
         return value
@@ -278,7 +282,7 @@ class UUIDField(BaseField):
         'convert': "{0}的值{1}不能转为UUID",
     }
 
-    def _to_native(self, value, context=None):
+    def _preproccess(self, value, context=None):
         if not isinstance(value, uuid.UUID):
             try:
                 value = uuid.UUID(value)
@@ -311,7 +315,7 @@ class StringField(BaseField):
         self.min_length = min_length
         super().__init__(label, **kwargs)
 
-    def _to_native(self, value, context=None):
+    def _preproccess(self, value, context=None):
         if isinstance(value, str):
             return value
         if isinstance(value, bytes):
@@ -362,7 +366,7 @@ class NumberField(BaseField):
 
         super().__init__(label, **kwargs)
 
-    def _to_native(self, value, context=None):
+    def _preproccess(self, value, context=None):
         if isinstance(value, bool):
             value = int(value)
         if isinstance(value, self.native_type):
@@ -431,7 +435,7 @@ class DecimalField(NumberField):
     native_type = decimal.Decimal
     number_type = '定点小数'
 
-    def _to_native(self, value, context=None):
+    def _preproccess(self, value, context=None):
         if isinstance(value, decimal.Decimal):
             return value
 
@@ -467,7 +471,7 @@ class BooleanField(BaseField):
     TRUE_VALUES = ('True', 'true', '1')
     FALSE_VALUES = ('False', 'false', '0')
 
-    def _to_native(self, value, context=None):
+    def _preproccess(self, value, context=None):
         if isinstance(value, str):
             if value in self.TRUE_VALUES:
                 value = True
@@ -500,7 +504,7 @@ class DateField(BaseField):
         'parse': "{0}日期格式错误,有效格式是ISO8601日期格式(YYYY-MM-DD)"
     }
 
-    def _to_native(self, value, context=None):
+    def _preproccess(self, value, context=None):
         if isinstance(value, datetime.datetime):
             return value.date()
         if isinstance(value, datetime.date):
@@ -512,10 +516,10 @@ class DateField(BaseField):
             raise exceptions.InvalidUsage(self.messages['parse'].format(self.label))
 
     def to_primitive(self, value, context=None):
-        native_data = self.to_native(value)
-        if native_data:
-            return datetime_helper.get_date_str(native_data)
-        return None
+        value = super().to_primitive(value, context)
+        if value is None:
+            return None
+        return datetime_helper.get_date_str(value)
 
     def openapi_spec(self):
         return {
@@ -536,7 +540,7 @@ class DateTimeField(BaseField):
         'parse': '{0}时间格式错误,有效格式是ISO8601时间格式',
     }
 
-    def _to_native(self, value, context=None):
+    def _preproccess(self, value, context=None):
         if isinstance(value, datetime.datetime):
             return datetime_helper.get_utc_time(value)
         try:
@@ -545,10 +549,10 @@ class DateTimeField(BaseField):
             raise exceptions.InvalidUsage(self.messages['parse'].format(self.label))
 
     def to_primitive(self, value, context=None):
-        native_data = self.to_native(value, context)
-        if native_data:
-            return datetime_helper.get_time_str(native_data)
-        return None
+        value = super().to_primitive(value, context)
+        if value is None:
+            return None
+        return datetime_helper.get_date_str(value)
 
     def openapi_spec(self):
         return {
@@ -566,7 +570,7 @@ class TimestampField(BaseField):
         'parse': '{0}时间戳有误',
     }
 
-    def _to_native(self, value, context=None):
+    def _preproccess(self, value, context=None):
         if isinstance(value, datetime.datetime):
             return datetime_helper.get_utc_time(value)
         try:
@@ -576,10 +580,10 @@ class TimestampField(BaseField):
             raise exceptions.InvalidUsage(self.messages['parse'].format(self.label))
 
     def to_primitive(self, value, context=None):
-        native_data = self.to_native(value, context)
-        if native_data:
-            return native_data.timestamp()
-        return None
+        value = super().to_primitive(value, context)
+        if value is None:
+            return None
+        return value.timestamp()
 
     def openapi_spec(self):
         return {
@@ -660,7 +664,9 @@ class FileField(BaseField):
         assert 'default' not in kwargs, 'FileField cannot set default'
         super().__init__(label, **kwargs)
 
-    def _to_native(self, value, context=None):
+    def to_native(self, value, context=None):
+        value = super().to_native(value, context)
+
         if not isinstance(value, request.File):
             raise exceptions.InvalidUsage(self.messages['invalid'].format(self.label))
 
@@ -674,7 +680,8 @@ class FileField(BaseField):
         return value
 
     def to_primitive(self, value, context=None):
-        if not value:
+        value = super().to_primitive(value, context)
+        if value is None:
             return None
 
         file_url = self.file_url or settings.FILE_URL
@@ -707,7 +714,11 @@ class SerializerField(BaseField):
     def _repr_info(self):
         return self.serializer.__class__.__name__
 
-    def _to_native(self, value, context=None):
+    def to_native(self, value, context=None):
+        value = super().to_native(value, context)
+        if value is None:
+            return None
+
         return self.serializer.to_native(value, context)
 
     def validate(self, value, context=None):
@@ -717,6 +728,7 @@ class SerializerField(BaseField):
         return value
 
     def to_primitive(self, value, context=None):
+        value = super().to_primitive(value, context)
         return self.serializer.to_primitive(value, context) if value is not None else None
 
     def openapi_spec(self):
@@ -761,10 +773,15 @@ class ListField(BaseField):
             return value
         raise exceptions.InvalidUsage('{0}应是列表'.format(self.label))
 
-    def _to_native(self, value, context=None):
+    def _preproccess(self, value, context=None):
+        value = super()._preproccess(value, context)
         if not value:
             return []
         value = self._coerce(value)
+        return value
+
+    def to_native(self, value, context=None):
+        value = super().to_native(value, context)
         data = []
         for index, item in enumerate(value):
             try:
@@ -776,9 +793,7 @@ class ListField(BaseField):
         return data
 
     def to_primitive(self, value, context=None):
-        if not value:
-            return []
-        value = self._coerce(value)
+        value = super().to_primitive(value, context)
         data = []
         for index, item in enumerate(value):
             try:
@@ -991,14 +1006,14 @@ class Serializer(BaseSerializer):
             return None
         native_data = {}
         for field_name, field in self.fields.items():
-            if isinstance(data, Mapping):
-                field_data = data.get(field_name, None)
-            elif hasattr(data, field_name):
+
+            if hasattr(data, field_name):
                 field_data = getattr(data, field_name)
+            elif isinstance(data, Mapping):
+                field_data = data.get(field_name, None)
             else:
                 field_data = None
-                # raise TypeError('"{0}" object has no attribute "{1}"'.format(data.__class__.__name__,
-                #                                                              field_name))
+
             native_data[field_name] = field.to_native(field_data, context)
         return native_data
 
@@ -1024,7 +1039,6 @@ class Serializer(BaseSerializer):
         return data
 
     def to_primitive(self, data, context=None):
-        data = self.to_native(data, context)
         if data is None:
             return None
         primitive_data = {}
@@ -1034,7 +1048,13 @@ class Serializer(BaseSerializer):
                                                   utils.get_value(self._meta,
                                                                   'serialize_when_none',
                                                                   field.serialize_when_none))
-            field_data = data.get(field_name, None)
+            if hasattr(data, field_name):
+                field_data = getattr(data, field_name)
+            elif isinstance(data, Mapping):
+                field_data = data.get(field_name, None)
+            else:
+                field_data = None
+
             if field.write_only or (field_data is None and not serialize_when_none):
                 continue
             primitive_data[field_name] = field.to_primitive(field_data, context)
@@ -1096,14 +1116,24 @@ class ListSerializer(BaseSerializer):
     def to_native(self, data, context=None):
         if data is None or data is Undefined:
             return []
-        return [self.child.to_native(item, context) for item in self.ensure_sequence(data) if
-                self.child.to_native(item, context)]
+
+        data = []
+        for item in self.ensure_sequence(data):
+            item_data = self.child.to_native(item, context)
+            if item_data:
+                data.append(item_data)
+
+        return data
 
     def to_primitive(self, data, context=None):
-        data = self.to_native(data)
-        if not data:
+        if data is None or data is Undefined:
             return []
-        return [self.child.to_primitive(item, context) for item in data]
+
+        data = []
+        for item in self.ensure_sequence(data):
+            item_data = self.child.to_primitive(item, context)
+            if item_data:
+                data.append(item_data)
 
     def validate(self, data, context=None):
         data = self.to_native(data)
