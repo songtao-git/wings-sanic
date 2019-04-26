@@ -156,7 +156,7 @@ class BaseField(metaclass=FieldMeta):
 
     def __init__(self, label=None, help_text=None, required=False,
                  default=Undefined, choices=None, validators=None,
-                 serialize_when_none=True, messages=None, read_only=None, write_only=None):
+                 serialize_when_none=True, messages=None, read_only=None, write_only=None, **kwargs):
         assert not (required and default is not Undefined), 'May not set both `required` and `default`'
         assert not (read_only and write_only), 'May not set both `read_only` and `write_only`'
 
@@ -181,6 +181,8 @@ class BaseField(metaclass=FieldMeta):
 
         self.name = None
         self.owner_serializer = None
+        for k, v in kwargs.items():
+            setattr(self, k, v)
 
     def __repr__(self):
         if self._repr_info():
