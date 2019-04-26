@@ -10,7 +10,7 @@ from collections import Iterable, OrderedDict
 from typing import Sequence, Mapping
 
 import six
-from sanic import exceptions
+from sanic import exceptions, request
 
 from . import datetime_helper, utils, settings
 
@@ -661,18 +661,14 @@ class FileField(BaseField):
         super().__init__(label, **kwargs)
 
     def _to_native(self, value, context=None):
-        try:
-            # `UploadedFile` objects should have name and size attributes.
-            file_name = value.name
-            file_size = value.size
-        except AttributeError:
+        if not isinstance(value, request.File):
             raise exceptions.InvalidUsage(self.messages['invalid'].format(self.label))
 
-        if not file_name:
+        if not value.name:
             raise exceptions.InvalidUsage(self.messages['no_name'].format(self.label))
-        if not self.allow_empty_file and not file_size:
+        if not self.allow_empty_file and not len(value.body):
             raise exceptions.InvalidUsage(self.messages['empty'].format(self.label))
-        if self.max_length and len(file_name) > self.max_length:
+        if self.max_length and len(value.body) > self.max_length:
             raise exceptions.InvalidUsage(self.messages['max_length'].format(self.label))
 
         return value
