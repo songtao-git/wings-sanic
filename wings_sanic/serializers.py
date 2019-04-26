@@ -666,6 +666,8 @@ class FileField(BaseField):
 
     def to_native(self, value, context=None):
         value = super().to_native(value, context)
+        if value is None:
+            return None
 
         if not isinstance(value, request.File):
             raise exceptions.InvalidUsage(self.messages['invalid'].format(self.label))

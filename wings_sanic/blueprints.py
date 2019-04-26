@@ -106,7 +106,7 @@ class WingsBluePrint(Blueprint):
                     from wings_sanic import context_var
                     context_var.get().update(metadata.context)
                 kwargs = await views.extract_params(request, metadata)
-                result = await raw_handler(request, **kwargs)
+                result = await raw_handler(request, metadata=metadata, **kwargs)
                 response = await views.process_result(result, metadata)
                 return response
 
