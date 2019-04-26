@@ -12,7 +12,7 @@ from typing import Sequence, Mapping
 import six
 from sanic import exceptions
 
-from . import datetime_helper, utils
+from . import datetime_helper, utils, settings
 
 __all__ = ['UUIDField', 'StringField', 'NumberField', 'IntField', 'FloatField', 'DecimalField', 'BooleanField',
            'DateTimeField', 'DateField', 'TimestampField', 'EmailField', 'PhoneField', 'IDField', 'SerializerField',
@@ -644,6 +644,48 @@ class IDField(StringField):
 class FileField(BaseField):
     """A field that validates input as a ID number.
     """
+
+    MESSAGES = {
+        'invalid': '{0}提交的的值不是有效的文件',
+        'no_name': '{0}提交的值没有文件名',
+        'empty': '{0}提交的值是一个空文件',
+        'max_length': "{0}的内容太大了"
+    }
+
+    def __init__(self, label, file_url=None, allow_empty_file=False, max_length=None, **kwargs):
+        self.max_length = max_length
+        self.allow_empty_file = allow_empty_file
+        self.file_url = file_url or settings.FILE_URL
+
+        assert 'default' not in kwargs, 'FileField cannot set default'
+        super().__init__(label, **kwargs)
+
+    def _to_native(self, value, context=None):
+        try:
+            # `UploadedFile` objects should have name and size attributes.
+            file_name = value.name
+            file_size = value.size
+        except AttributeError:
+            raise exceptions.InvalidUsage(self.messages['invalid'].format(self.label))
+
+        if not file_name:
+            raise exceptions.InvalidUsage(self.messages['no_name'].format(self.label))
+        if not self.allow_empty_file and not file_size:
+            raise exceptions.InvalidUsage(self.messages['empty'].format(self.label))
+        if self.max_length and len(file_name) > self.max_length:
+            raise exceptions.InvalidUsage(self.messages['max_length'].format(self.label))
+
+        return value
+
+    def to_primitive(self, value, context=None):
+        if not value:
+            return None
+
+        file_url = self.file_url or settings.FILE_URL
+        if hasattr(value, 'name'):
+            return (file_url or '') + value.name
+
+        return (file_url or '') + value
 
     def openapi_spec(self):
         return {

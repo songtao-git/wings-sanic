@@ -20,6 +20,7 @@ DEFAULTS = {
         'project': 'INFO'
     },
     'GLOBAL_URL_PREFIX': '',
+    'FILE_URL': '',
     'BLUEPRINTS': [],
     'DEFAULT_CONTEXT': {
         'response_shape': 'wings_sanic.views.ResponseShape',

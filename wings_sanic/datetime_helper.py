@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-
+import calendar
 import datetime
 import re
 
@@ -170,6 +170,19 @@ def from_timestamp(timestamp):
     """
     dt = datetime.datetime.utcfromtimestamp(timestamp)
     return get_utc_time(dt)
+
+
+def add_months(dt, months: int):
+    # 在dt的基础上增加n个月，n可为负数
+    month = dt.month + months
+    year = dt.year
+
+    month_for_mod = month - 1
+
+    month = month_for_mod % 12 + 1
+    year += month_for_mod // 12
+    day = min(dt.day, calendar.monthrange(year, month)[1])
+    return dt.replace(year=year, month=month, day=day)
 
 
 if __name__ == '__main__':

@@ -123,9 +123,13 @@ def build_spec(app, loop):
                         'schema': body_spec
                     })
                 else:
-                    for name, field_spec in body_spec['properties'].items():
+                    cls_str = utils.cls_str_of_obj(metadata.body_serializer)
+                    if cls_str in serializers.definitions:
+                        body_spec = serializers.definitions[cls_str]
+                    for name, field_spec in body_spec.get('properties', {}).items():
                         parameters.append({
                             'in': 'formData',
+                            'name': name,
                             **field_spec
                         })
 
