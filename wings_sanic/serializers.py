@@ -145,8 +145,8 @@ class BaseField(metaclass=FieldMeta):
         resulting dict with instance level `messages` and assign to
         `self.messages`.
     """
-    primitive_type = None
-    native_type = None
+    primitive_type = None  # 如果子类需重写to_primitive，建议次字段保留为None；否则设置成对应的期望类型
+    native_type = None  # 如果子类需重写to_primitive，建议次字段保留为None；否则设置成对应的期望类型
     is_composition = False
 
     MESSAGES = {
@@ -498,10 +498,6 @@ class BooleanField(BaseField):
 class DateField(BaseField):
     """Convert to and from ISO8601 date value.
     """
-
-    primitive_type = str
-    native_type = datetime.date
-
     MESSAGES = {
         'parse': "{0}日期格式错误,有效格式是ISO8601日期格式(YYYY-MM-DD)"
     }
@@ -534,10 +530,6 @@ class DateField(BaseField):
 class DateTimeField(BaseField):
     """Convert to and from ISO8601 datetime value.
     """
-
-    primitive_type = str
-    native_type = datetime.datetime
-
     MESSAGES = {
         'parse': '{0}时间格式错误,有效格式是ISO8601时间格式',
     }
@@ -565,9 +557,6 @@ class DateTimeField(BaseField):
 
 
 class TimestampField(BaseField):
-    primitive_type = float
-    native_type = datetime.datetime
-
     MESSAGES = {
         'parse': '{0}时间戳有误',
     }
@@ -703,8 +692,6 @@ class FileField(BaseField):
 
 class SerializerField(BaseField):
     """A field that can hold an instance of the specified model."""
-    primitive_type = dict
-    native_type = dict
     is_composition = True
 
     def __init__(self, label=None, serializer=None, **kwargs):
@@ -750,9 +737,6 @@ class ListField(BaseField):
         ...
         categories = ListField('类别', StringField('类别名称'))
     """
-
-    primitive_type = list
-    native_type = list
     is_composition = True
 
     def __init__(self, label=None, field=None, min_size=None, max_size=None, **kwargs):
@@ -846,9 +830,6 @@ class ListField(BaseField):
 class JsonField(BaseField):
     """A field for json.
     """
-
-    primitive_type = None
-    native_type = None
     is_composition = True
 
     def to_native(self, value, context=None):
