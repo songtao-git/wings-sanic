@@ -559,7 +559,6 @@ class DateTimeField(BaseField):
 
 
 class TimestampField(BaseField):
-
     MESSAGES = {
         'parse': '{0}时间戳有误',
     }
@@ -1108,23 +1107,24 @@ class ListSerializer(BaseSerializer):
         if data is None or data is Undefined:
             return []
 
-        data = []
+        native_data = []
         for item in self.ensure_sequence(data):
             item_data = self.child.to_native(item, context)
             if item_data:
-                data.append(item_data)
+                native_data.append(item_data)
 
-        return data
+        return native_data
 
     def to_primitive(self, data, context=None):
         if data is None or data is Undefined:
             return []
 
-        data = []
+        primitive_data = []
         for item in self.ensure_sequence(data):
             item_data = self.child.to_primitive(item, context)
             if item_data:
-                data.append(item_data)
+                primitive_data.append(item_data)
+        return primitive_data
 
     def validate(self, data, context=None):
         data = self.to_native(data)
