@@ -502,6 +502,10 @@ class DateField(BaseField):
         'parse': "{0}日期格式错误,有效格式是ISO8601日期格式(YYYY-MM-DD)"
     }
 
+    def __init__(self, label=None, fmt=None, **kwargs):
+        self.fmt = fmt
+        super().__init__(label, **kwargs)
+
     def _preproccess(self, value, context=None):
         if isinstance(value, datetime.datetime):
             return value.date()
@@ -517,6 +521,8 @@ class DateField(BaseField):
         value = super().to_primitive(value, context)
         if value is None:
             return None
+        if self.fmt:
+            return value.strftime(self.fmt)
         return datetime_helper.get_date_str(value)
 
     def openapi_spec(self):
@@ -534,6 +540,10 @@ class DateTimeField(BaseField):
         'parse': '{0}时间格式错误,有效格式是ISO8601时间格式',
     }
 
+    def __init__(self, label=None, fmt=None, **kwargs):
+        self.fmt = fmt
+        super().__init__(label, **kwargs)
+
     def _preproccess(self, value, context=None):
         if isinstance(value, datetime.datetime):
             return datetime_helper.get_utc_time(value)
@@ -546,7 +556,9 @@ class DateTimeField(BaseField):
         value = super().to_primitive(value, context)
         if value is None:
             return None
-        return datetime_helper.get_date_str(value)
+        if self.fmt:
+            return value.strftime(self.fmt)
+        return datetime_helper.get_time_str(value)
 
     def openapi_spec(self):
         return {
@@ -647,7 +659,7 @@ class FileField(BaseField):
         'max_length': "{0}的内容太大了"
     }
 
-    def __init__(self, label, file_url=None, allow_empty_file=False, max_length=None, **kwargs):
+    def __init__(self, label=None, file_url=None, allow_empty_file=False, max_length=None, **kwargs):
         self.max_length = max_length
         self.allow_empty_file = allow_empty_file
         self.file_url = file_url or settings.FILE_URL
@@ -1102,23 +1114,24 @@ class ListSerializer(BaseSerializer):
         if data is None or data is Undefined:
             return []
 
-        data = []
+        native_data = []
         for item in self.ensure_sequence(data):
             item_data = self.child.to_native(item, context)
             if item_data:
-                data.append(item_data)
+                native_data.append(item_data)
 
-        return data
+        return native_data
 
     def to_primitive(self, data, context=None):
         if data is None or data is Undefined:
             return []
 
-        data = []
+        primitive_data = []
         for item in self.ensure_sequence(data):
             item_data = self.child.to_primitive(item, context)
             if item_data:
-                data.append(item_data)
+                primitive_data.append(item_data)
+        return primitive_data
 
     def validate(self, data, context=None):
         data = self.to_native(data)
