@@ -499,9 +499,6 @@ class DateField(BaseField):
     """Convert to and from ISO8601 date value.
     """
 
-    primitive_type = str
-    native_type = datetime.date
-
     MESSAGES = {
         'parse': "{0}日期格式错误,有效格式是ISO8601日期格式(YYYY-MM-DD)"
     }
@@ -535,9 +532,6 @@ class DateTimeField(BaseField):
     """Convert to and from ISO8601 datetime value.
     """
 
-    primitive_type = str
-    native_type = datetime.datetime
-
     MESSAGES = {
         'parse': '{0}时间格式错误,有效格式是ISO8601时间格式',
     }
@@ -565,8 +559,6 @@ class DateTimeField(BaseField):
 
 
 class TimestampField(BaseField):
-    primitive_type = float
-    native_type = datetime.datetime
 
     MESSAGES = {
         'parse': '{0}时间戳有误',
@@ -703,8 +695,6 @@ class FileField(BaseField):
 
 class SerializerField(BaseField):
     """A field that can hold an instance of the specified model."""
-    primitive_type = dict
-    native_type = dict
     is_composition = True
 
     def __init__(self, label=None, serializer=None, **kwargs):
@@ -750,9 +740,6 @@ class ListField(BaseField):
         ...
         categories = ListField('类别', StringField('类别名称'))
     """
-
-    primitive_type = list
-    native_type = list
     is_composition = True
 
     def __init__(self, label=None, field=None, min_size=None, max_size=None, **kwargs):
