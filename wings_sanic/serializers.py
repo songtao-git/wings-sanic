@@ -554,7 +554,7 @@ class DateTimeField(BaseField):
         value = super().to_primitive(value, context)
         if value is None:
             return None
-        return datetime_helper.get_date_str(value)
+        return datetime_helper.get_time_str(value)
 
     def openapi_spec(self):
         return {
