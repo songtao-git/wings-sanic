@@ -106,16 +106,16 @@ def build_spec(app, loop):
                 __update_definitions(group_spec, metadata.query_serializer)
 
             # body
-            has_file_filed = False
+            has_file_field = False
             if metadata.body_serializer:
                 body_spec = metadata.body_serializer.openapi_spec()
                 import wings_sanic
                 for _, f in metadata.body_serializer.fields.items():
                     if isinstance(f, wings_sanic.FileField):
-                        has_file_filed = True
+                        has_file_field = True
                         break
 
-                if not has_file_filed:
+                if not has_file_field:
                     parameters.append({
                         'in': 'body',
                         'name': 'body',
@@ -127,9 +127,13 @@ def build_spec(app, loop):
                     if cls_str in serializers.definitions:
                         body_spec = serializers.definitions[cls_str]
                     for name, field_spec in body_spec.get('properties', {}).items():
+                        # 忽略read_only字段
+                        if utils.get_value(field_spec, 'readOnly', False):
+                            continue
                         parameters.append({
                             'in': 'formData',
                             'name': name,
+                            'required': name in utils.get_value(body_spec, 'required', []),
                             **field_spec
                         })
 
@@ -151,7 +155,7 @@ def build_spec(app, loop):
                 'operationId': utils.meth_str(_handler),
                 'summary': summary,
                 'description': description,
-                'consumes': ['multipart/form-data'] if has_file_filed else ['application/json'],
+                'consumes': ['multipart/form-data'] if has_file_field else ['application/json'],
                 'produces': ['application/json'],
                 'tags': metadata.tags,
                 'parameters': parameters,

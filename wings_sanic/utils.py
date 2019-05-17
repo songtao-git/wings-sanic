@@ -162,7 +162,7 @@ def remove_nulls(dictionary, deep=True):
     return {
         k: remove_nulls(v, deep) if deep and type(v) is dict else v
         for k, v in dictionary.items()
-        if v is not None
+        if v not in [None, dict(), list(), tuple(), set(), '']
     }
 
 

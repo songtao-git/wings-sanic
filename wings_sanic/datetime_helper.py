@@ -185,6 +185,15 @@ def add_months(dt, months: int):
     return dt.replace(year=year, month=month, day=day)
 
 
+def add_days(dt, days: int, month_first=True):
+    result = dt + datetime.timedelta(days=days)
+    # days是30的整倍数时，按月计算
+    if month_first and days % 30 == 0:
+        result = add_months(dt, int(days / 30))
+
+    return result
+
+
 if __name__ == '__main__':
     print(get_local_time())
     print(get_local_time().strftime('%Y-%m-%d %H:%M:%S'))

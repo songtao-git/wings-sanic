@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
-from sanic import exceptions
-from sanic.response import json, BaseHTTPResponse
+from sanic import exceptions, response
 
 from wings_sanic import utils, serializers, context_var
+import json
 
 
 class ResponseShape:
@@ -84,7 +84,7 @@ def exception_handler(request, exception):
     result = utils.get_value(exception, 'message', str(exception))
     code = utils.get_value(exception, 'status_code', 500)
     result, code = response_shape.create_body(result, code)
-    return json(body=result, status=code)
+    return response.json(body=result, status=code)
 
 
 async def extract_params(request, metadata):
@@ -104,9 +104,24 @@ async def extract_params(request, metadata):
         for name, field in serializer.fields.items():
             if name in data:
                 if isinstance(field, serializers.ListField):
-                    result[name] = set()
+                    values = []
                     for i in data[name]:
-                        result[name].update(i.split(','))  # match `?a=b,c,d&a=d`
+                        i = i.strip()
+                        # 每项是json结构
+                        if isinstance(field.field, serializers.SerializerField):
+                            try:
+                                values.append(json.loads(i.strip('"')))
+                            except Exception:
+                                raise exceptions.InvalidUsage(f'"{field.label}"的参数有误(需json结构)')
+                        # 每项是普通值, 注意处理'"ITEM"'格式的首尾"号
+                        else:
+                            values.extend([j.strip('"') for j in i.split(',')])  # match `?a=b,c,d&a=d`
+
+                    result[name] = []
+                    for i in values:
+                        if i not in result[name]:
+                            result[name].append(i)
+
                 else:
                     result[name] = data[name][0]
         return result
@@ -147,7 +162,7 @@ async def process_result(result, metadata):
             returned back in the API.
     """
 
-    if isinstance(result, BaseHTTPResponse):
+    if isinstance(result, response.BaseHTTPResponse):
         return result
 
     if metadata.response_serializer:
@@ -159,4 +174,4 @@ async def process_result(result, metadata):
 
     result, code = response_shape.create_body(result, metadata.success_code)
 
-    return json(body=result, status=code)
+    return response.json(body=result, status=code)
