@@ -145,8 +145,8 @@ class BaseField(metaclass=FieldMeta):
         resulting dict with instance level `messages` and assign to
         `self.messages`.
     """
-    primitive_type = None
-    native_type = None
+    primitive_type = None  # 如果子类需重写to_primitive，建议次字段保留为None；否则设置成对应的期望类型
+    native_type = None  # 如果子类需重写to_primitive，建议次字段保留为None；否则设置成对应的期望类型
     is_composition = False
 
     MESSAGES = {
@@ -215,46 +215,31 @@ class BaseField(metaclass=FieldMeta):
             default = default()
         return default
 
-    def _to_primitive(self, value, context=None):
-        if self.primitive_type:
-            return value if isinstance(value, self.primitive_type) else self.primitive_type(value)
+    def _preproccess(self, value, context=None):
         return value
 
     def to_primitive(self, value, context=None):
         """Convert internal data to a value safe to serialize.
         """
+        value = self._preproccess(value, context) if value is not None else None
         if value is None and self._default is not Undefined:
             value = self.default
 
         if value is None:
             return None
 
-        try:
-            value = self._to_native(value, context)
-        except:
-            value = None
-
-        if value is None:
-            return None
-
-        return self._to_primitive(value)
-
-    def _to_native(self, value, context=None):
-        if self.native_type:
-            return value if isinstance(value, self.native_type) else self.native_type(value)
+        if self.primitive_type is not None and not isinstance(value, self.primitive_type):
+            return self.primitive_type(value)
         return value
 
     def to_native(self, value, context=None):
         """
         Convert untrusted data to a richer Python construct.
         """
+        value = self._preproccess(value, context) if value is not None else None
         if value is None and self._default is not Undefined:
             value = self.default
-
-        if value is None:
-            return None
-
-        return self._to_native(value)
+        return value
 
     def validate(self, value, context=None):
         native_data = self.to_native(value, context)
@@ -299,10 +284,7 @@ class UUIDField(BaseField):
         'convert': "{0}的值{1}不能转为UUID",
     }
 
-    def _to_primitive(self, value, context=None):
-        return value.hex
-
-    def _to_native(self, value, context=None):
+    def _preproccess(self, value, context=None):
         if not isinstance(value, uuid.UUID):
             try:
                 value = uuid.UUID(value)
@@ -335,7 +317,7 @@ class StringField(BaseField):
         self.min_length = min_length
         super().__init__(label, **kwargs)
 
-    def _to_native(self, value, context=None):
+    def _preproccess(self, value, context=None):
         if isinstance(value, str):
             return value
         if isinstance(value, bytes):
@@ -386,7 +368,7 @@ class NumberField(BaseField):
 
         super().__init__(label, **kwargs)
 
-    def _to_native(self, value, context=None):
+    def _preproccess(self, value, context=None):
         if isinstance(value, bool):
             value = int(value)
         if isinstance(value, self.native_type):
@@ -455,6 +437,20 @@ class DecimalField(NumberField):
     native_type = decimal.Decimal
     number_type = '定点小数'
 
+    def _preproccess(self, value, context=None):
+        if isinstance(value, decimal.Decimal):
+            return value
+
+        if not isinstance(value, (str, bool)):
+            value = value
+        try:
+            value = decimal.Decimal(value)
+        except (TypeError, decimal.InvalidOperation):
+            raise exceptions.InvalidUsage(
+                self.messages['number_coerce'].format(self.label, value, self.number_type))
+
+        return value
+
     def openapi_spec(self):
         return {
             "type": "string",
@@ -477,14 +473,14 @@ class BooleanField(BaseField):
     TRUE_VALUES = ('True', 'true', '1')
     FALSE_VALUES = ('False', 'false', '0')
 
-    def _to_native(self, value, context=None):
+    def _preproccess(self, value, context=None):
         if isinstance(value, str):
             if value in self.TRUE_VALUES:
                 value = True
             elif value in self.FALSE_VALUES:
                 value = False
 
-        elif value in [0, 1]:
+        elif isinstance(value, int) and value in [0, 1]:
             value = bool(value)
 
         if not isinstance(value, bool):
@@ -502,14 +498,15 @@ class BooleanField(BaseField):
 class DateField(BaseField):
     """Convert to and from ISO8601 date value.
     """
-    primitive_type = str
-    native_type = datetime.date
-
     MESSAGES = {
         'parse': "{0}日期格式错误,有效格式是ISO8601日期格式(YYYY-MM-DD)"
     }
 
-    def _to_native(self, value, context=None):
+    def __init__(self, label=None, fmt=None, **kwargs):
+        self.fmt = fmt
+        super().__init__(label, **kwargs)
+
+    def _preproccess(self, value, context=None):
         if isinstance(value, datetime.datetime):
             return value.date()
         if isinstance(value, datetime.date):
@@ -520,7 +517,12 @@ class DateField(BaseField):
         except (ValueError, TypeError):
             raise exceptions.InvalidUsage(self.messages['parse'].format(self.label))
 
-    def _to_primitive(self, value, context=None):
+    def to_primitive(self, value, context=None):
+        value = super().to_primitive(value, context)
+        if value is None:
+            return None
+        if self.fmt:
+            return value.strftime(self.fmt)
         return datetime_helper.get_date_str(value)
 
     def openapi_spec(self):
@@ -534,12 +536,15 @@ class DateField(BaseField):
 class DateTimeField(BaseField):
     """Convert to and from ISO8601 datetime value.
     """
-
     MESSAGES = {
         'parse': '{0}时间格式错误,有效格式是ISO8601时间格式',
     }
 
-    def _to_native(self, value, context=None):
+    def __init__(self, label=None, fmt=None, **kwargs):
+        self.fmt = fmt
+        super().__init__(label, **kwargs)
+
+    def _preproccess(self, value, context=None):
         if isinstance(value, datetime.datetime):
             return datetime_helper.get_utc_time(value)
         try:
@@ -547,7 +552,12 @@ class DateTimeField(BaseField):
         except (ValueError, TypeError):
             raise exceptions.InvalidUsage(self.messages['parse'].format(self.label))
 
-    def _to_primitive(self, value, context=None):
+    def to_primitive(self, value, context=None):
+        value = super().to_primitive(value, context)
+        if value is None:
+            return None
+        if self.fmt:
+            return value.strftime(self.fmt)
         return datetime_helper.get_time_str(value)
 
     def openapi_spec(self):
@@ -563,7 +573,7 @@ class TimestampField(BaseField):
         'parse': '{0}时间戳有误',
     }
 
-    def _to_native(self, value, context=None):
+    def _preproccess(self, value, context=None):
         if isinstance(value, datetime.datetime):
             return datetime_helper.get_utc_time(value)
         try:
@@ -572,7 +582,10 @@ class TimestampField(BaseField):
         except (ValueError, TypeError):
             raise exceptions.InvalidUsage(self.messages['parse'].format(self.label))
 
-    def _to_primitive(self, value, context=None):
+    def to_primitive(self, value, context=None):
+        value = super().to_primitive(value, context)
+        if value is None:
+            return None
         return value.timestamp()
 
     def openapi_spec(self):
@@ -646,7 +659,7 @@ class FileField(BaseField):
         'max_length': "{0}的内容太大了"
     }
 
-    def __init__(self, label, file_url=None, allow_empty_file=False, max_length=None, **kwargs):
+    def __init__(self, label=None, file_url=None, allow_empty_file=False, max_length=None, **kwargs):
         self.max_length = max_length
         self.allow_empty_file = allow_empty_file
         self.file_url = file_url or settings.FILE_URL
@@ -655,6 +668,7 @@ class FileField(BaseField):
         super().__init__(label, **kwargs)
 
     def to_native(self, value, context=None):
+        value = super().to_native(value, context)
         if value is None:
             return None
 
@@ -671,6 +685,7 @@ class FileField(BaseField):
         return value
 
     def to_primitive(self, value, context=None):
+        value = super().to_primitive(value, context)
         if value is None:
             return None
 
@@ -703,23 +718,21 @@ class SerializerField(BaseField):
         return self.serializer.__class__.__name__
 
     def to_native(self, value, context=None):
-        if value is None and self._default is not Undefined:
-            value = self.default
+        value = super().to_native(value, context)
+        if value is None:
+            return None
 
         return self.serializer.to_native(value, context)
 
     def validate(self, value, context=None):
-        value = self.to_native(value, context)
-        value = self.serializer.validate(value, context)
+        value = self.serializer.validate(value, context) if value is not None else None
         for validator in self.validators:
             validator(value, context)
         return value
 
     def to_primitive(self, value, context=None):
-        if value is None and self._default is not Undefined:
-            value = self.default
-
-        return self.serializer.to_primitive(value, context)
+        value = super().to_primitive(value, context)
+        return self.serializer.to_primitive(value, context) if value is not None else None
 
     def openapi_spec(self):
         res = self.serializer.openapi_spec()
@@ -750,8 +763,6 @@ class ListField(BaseField):
         return self.field.__class__.__name__
 
     def _coerce(self, value):
-        if value is None:
-            return []
         if isinstance(value, list):
             return value
         elif isinstance(value, (str, Mapping)):  # unacceptable iterables
@@ -762,9 +773,16 @@ class ListField(BaseField):
             return value
         raise exceptions.InvalidUsage('{0}应是列表'.format(self.label))
 
-    def to_native(self, value, context=None):
-        data = []
+    def _preproccess(self, value, context=None):
+        value = super()._preproccess(value, context)
+        if not value:
+            return []
         value = self._coerce(value)
+        return value
+
+    def to_native(self, value, context=None):
+        value = super().to_native(value, context)
+        data = []
         for index, item in enumerate(value):
             try:
                 item_data = self.field.to_native(item, context)
@@ -775,8 +793,8 @@ class ListField(BaseField):
         return data
 
     def to_primitive(self, value, context=None):
+        value = super().to_primitive(value, context)
         data = []
-        value = self._coerce(value)
         for index, item in enumerate(value):
             try:
                 item_data = self.field.to_primitive(item, context)
@@ -788,14 +806,16 @@ class ListField(BaseField):
 
     def validate(self, value, context=None):
         data = []
-        value = self._coerce(value)
-        for index, item in enumerate(value):
-            try:
-                item_data = self.field.validate(item, context)
-                if item_data:
-                    data.append(item_data)
-            except exceptions.SanicException as exc:
-                raise exceptions.InvalidUsage('{0}的第{1}个值有误:{2}'.format(self.label, index, exc))
+        if value:
+            value = self._coerce(value)
+            data = []
+            for index, item in enumerate(value):
+                try:
+                    item_data = self.field.validate(item, context)
+                    if item_data:
+                        data.append(item_data)
+                except exceptions.SanicException as exc:
+                    raise exceptions.InvalidUsage('{0}的第{1}个值有误:{2}'.format(self.label, index, exc))
 
         for validator in self.validators:
             validator(data, context)
@@ -822,9 +842,6 @@ class ListField(BaseField):
 class JsonField(BaseField):
     """A field for json.
     """
-
-    primitive_type = None
-    native_type = None
     is_composition = True
 
     def to_native(self, value, context=None):
@@ -840,7 +857,7 @@ class JsonField(BaseField):
             raise exceptions.InvalidUsage('{0}的值不是有效的json格式')
 
     def to_primitive(self, value, context=None):
-        return utils.to_primitive(value)
+        utils.to_primitive(value)
 
     def openapi_spec(self):
         return {
@@ -986,6 +1003,7 @@ class Serializer(BaseSerializer):
             return None
         native_data = {}
         for field_name, field in self.fields.items():
+
             if hasattr(data, field_name):
                 field_data = getattr(data, field_name)
             elif isinstance(data, Mapping):
@@ -1082,8 +1100,6 @@ class ListSerializer(BaseSerializer):
         assert not self.fields, 'fields of ListSerializer should be empty'
 
     def ensure_sequence(self, value):
-        if value is None:
-            return []
         if isinstance(value, list):
             return value
         elif isinstance(value, (str, Mapping)):  # unacceptable iterables
