@@ -10,8 +10,8 @@ dev_settings = {
     'MQ_SERVERS': {
         'default': {
             'server': 'wings_sanic.mq_servers.rabbitmq_server.MqServer',
-            'url': 'amqp://test:123456@172.16.6.15:5672',
-            'exchange': 'songtao',
+            'url': 'amqp://rabbitmq-host/virtual-host',
+            'exchange': 'exchange-name',
             'reconnect_delay': 5.0
         }
     },
