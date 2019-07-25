@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 from sanic import exceptions, response
 
-from wings_sanic import utils, serializers, context_var
+from wings_sanic import utils, serializers, context_var, logger
 import json
 
 
@@ -110,9 +110,12 @@ async def extract_params(request, metadata):
                         # 每项是json结构
                         if isinstance(field.field, serializers.SerializerField):
                             try:
-                                values.append(json.loads(i.strip('"')))
+                                if isinstance(i, str):
+                                    values.append(json.loads(i.strip('"')))
+                                else:
+                                    values.append(field.field.to_native(i))
                             except Exception:
-                                raise exceptions.InvalidUsage(f'"{field.label}"的参数有误(需json结构)')
+                                raise exceptions.InvalidUsage(f'"{field.label}"的参数有误, data: {i}， data type: {type(i)}')
                         # 每项是普通值, 注意处理'"ITEM"'格式的首尾"号
                         else:
                             values.extend([j.strip('"') for j in i.split(',')])  # match `?a=b,c,d&a=d`

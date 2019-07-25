@@ -98,7 +98,7 @@ def convert_zone(dt: datetime.datetime, tz_to, tz_default=UTC):
     :param tz_to: 转换后的目标时区
     :param tz_default: dt无时区信息时的默认时区
     :return:
-    """
+```    """
     if not hasattr(dt, 'tzinfo'):
         return dt
     if not dt.tzinfo:
@@ -173,6 +173,8 @@ def from_timestamp(timestamp):
 
 
 def add_months(dt, months: int):
+    if not dt:
+        return None
     # 在dt的基础上增加n个月，n可为负数
     month = dt.month + months
     year = dt.year
@@ -186,6 +188,8 @@ def add_months(dt, months: int):
 
 
 def add_days(dt, days: int, month_first=True):
+    if not dt:
+        return None
     result = dt + datetime.timedelta(days=days)
     # days是30的整倍数时，按月计算
     if month_first and days % 30 == 0:

@@ -117,7 +117,7 @@ class inspector:
                     'interval': interval,
                     'times': times
                 })
-                return func
+                return func_wrapped
 
             return decorator
 
