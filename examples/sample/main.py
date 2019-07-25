@@ -22,7 +22,7 @@ dev_settings = {
             "description": 'sample for wings-sanic',
             "termsOfService": None,
             "contact": {
-                "email": "songtao@klicen.com"
+                "email": "975765671@qq.com"
             },
             "license": {
                 "email": None,
