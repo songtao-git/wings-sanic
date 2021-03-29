@@ -2,11 +2,12 @@
 
 import json
 import logging
+import os
 import socket
 import sys
 from collections import OrderedDict
 
-from . import datetime_helper, settings, context_var
+from . import datetime_helper
 
 
 class JsonFormatter(logging.Formatter):
@@ -41,15 +42,16 @@ class JsonFormatter(logging.Formatter):
                 method_name = '{cls_name}.{func_name}'.format(cls_name=cls_name, func_name=func_name)
         msg = OrderedDict((
             ('@timestamp', datetime_helper.get_time_str()),
-            ('level', record.levelname),
-            ('project_name', settings.get('PROJECT_NAME')),
-            ('project_version', settings.get('PROJECT_VERSION')),
+            ('service.name', getattr(record, 'elasticapm_service_name', os.environ.get('PROJECT_NAME', ''))),
+            ('trace.id', getattr(record, 'elasticapm_trace_id', "")),
+            ('transaction.id', getattr(record, 'elasticapm_transaction_id', "")),
+            ('log.level', record.levelname),
+            ("log.logger", record.name),
             ("request_uri", getattr(record, 'request_uri', "")),
-            ("spent", getattr(record, 'spent', None)),
-            ("trace_id", (context_var.get() or {}).get('trace_id', '')),
+            ("trace_id", getattr(record, 'trace_id', "")),
             ("remote_ip", getattr(record, 'remote_ip', "")),
+            ("user", getattr(record, 'user', "")),
             ("local_ip", socket.gethostbyname(socket.gethostname())),
-            ("logger_name", record.name),
             ("method_name", method_name),
             ("line_number", record.lineno),
             ("thread_name", record.threadName),
